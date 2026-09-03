@@ -1,0 +1,26 @@
+{
+  "train": [
+    "suspicious-document00006",
+    "suspicious-document00128",
+    "suspicious-document00135",
+    "suspicious-document00247",
+    "suspicious-document00297",
+    "suspicious-document00320",
+    "suspicious-document00202",
+    "suspicious-document00093",
+    "suspicious-document00117",
+    "suspicious-document00041"
+  ],
+  "validation": [
+    "suspicious-document00322",
+    "suspicious-document00130",
+    "suspicious-document00241",
+    "suspicious-document00160"
+  ],
+  "test": [
+    "suspicious-document00119",
+    "suspicious-document00280",
+    "suspicious-document00138",
+    "suspicious-document00319"
+  ]
+}
