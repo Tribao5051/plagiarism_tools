@@ -33,12 +33,18 @@ SEMANTIC_ENCODE_BATCH_SIZE = int(
     DETECTION_CONFIG["semantic_encode_batch_size"])
 SEMANTIC_MAX_LENGTH = int(DETECTION_CONFIG["semantic_max_length"])
 SOURCE_CACHE_MAX_FILES = 64
-SEMANTIC_STRONG_THRESHOLD = 0.72
-SEMANTIC_FALLBACK_THRESHOLD = 0.68
-SEMANTIC_FALLBACK_MARGIN = 0.035
-SEMANTIC_SOURCES_PER_STUDENT_CHUNK = 2
-SEMANTIC_NMS_STUDENT_WINDOW = 700
-SEMANTIC_NMS_SOURCE_WINDOW = 900
+SEMANTIC_STRONG_THRESHOLD = float(
+    DETECTION_CONFIG.get("semantic_strong_threshold", 0.72))
+SEMANTIC_FALLBACK_THRESHOLD = float(
+    DETECTION_CONFIG.get("semantic_fallback_threshold", 0.68))
+SEMANTIC_FALLBACK_MARGIN = float(
+    DETECTION_CONFIG.get("semantic_fallback_margin", 0.035))
+SEMANTIC_SOURCES_PER_STUDENT_CHUNK = int(
+    DETECTION_CONFIG.get("semantic_sources_per_student_chunk", 2))
+SEMANTIC_NMS_STUDENT_WINDOW = int(
+    DETECTION_CONFIG.get("semantic_nms_student_window", 700))
+SEMANTIC_NMS_SOURCE_WINDOW = int(
+    DETECTION_CONFIG.get("semantic_nms_source_window", 900))
 SEMANTIC_RETRIEVAL_QUERY_LIMIT = 512
 SEMANTIC_RETRIEVAL_RESULTS_PER_CHUNK = int(
     DETECTION_CONFIG["semantic_retrieval_results_per_chunk"])
@@ -55,6 +61,32 @@ PASSAGE_MAX_STUDENT_CHARS = 3500
 PASSAGE_MAX_SOURCE_CHARS = 4500
 EVIDENCE_PROFILES = {"balanced", "high_precision", "all"}
 DEFAULT_EVIDENCE_PROFILE = "balanced"
+DEFAULT_EVIDENCE_PROFILE_CONFIGS = {
+    "balanced": {
+        "minimum_confidence": 0.50,
+        "max_total": 220,
+        "max_per_source": 12,
+        "same_source_student_overlap": 0.45,
+        "same_source_student_gap": 250,
+        "cross_source_overlap": 0.75,
+        "max_sources_per_region": 2,
+    },
+    "high_precision": {
+        "minimum_confidence": 0.66,
+        "max_total": 90,
+        "max_per_source": 2,
+        "same_source_student_overlap": 0.20,
+        "same_source_student_gap": 1100,
+        "cross_source_overlap": 0.55,
+        "max_sources_per_region": 1,
+    },
+}
+EVIDENCE_PROFILE_CONFIGS = {}
+for _profile_name, _defaults in DEFAULT_EVIDENCE_PROFILE_CONFIGS.items():
+    EVIDENCE_PROFILE_CONFIGS[_profile_name] = dict(_defaults)
+    EVIDENCE_PROFILE_CONFIGS[_profile_name].update(
+        DETECTION_CONFIG.get("evidence_profiles", {}).get(
+            _profile_name, {}))
 LEXICAL_WINDOW_SIZE = 2500
 LEXICAL_WINDOW_STEP = 1250
 LEXICAL_SCORE_THRESHOLD = 0.50
@@ -547,6 +579,21 @@ def _interval_overlap_ratio(left, right):
     return overlap / shorter if shorter > 0 else 0.0
 
 
+def _same_source_evidence_is_duplicate(previous, candidate, config):
+    """Keep one display candidate per nearby student region and source."""
+    previous_student = (
+        previous["student_start"], previous["student_end"])
+    candidate_student = (
+        candidate["student_start"], candidate["student_end"])
+    student_overlap = _interval_overlap_ratio(
+        previous_student, candidate_student)
+    student_gap = _span_gap(*previous_student, *candidate_student)
+    return (
+        student_overlap >= config["same_source_student_overlap"]
+        or student_gap <= config["same_source_student_gap"]
+    )
+
+
 def _evidence_confidence(evidence):
     """Score independent detector support; no ground-truth data is used."""
     evidence_type = evidence.get("type", "semantic")
@@ -687,36 +734,40 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
             candidate["_result_index"] = result_index
             candidates.append(candidate)
 
+    rejection_keys = (
+        "profile_rule",
+        "confidence",
+        "invalid_span",
+        "source_cap",
+        "same_source_duplicate",
+        "cross_source_competition",
+        "total_cap",
+    )
+    rejection_counts = {key: 0 for key in rejection_keys}
+    result_rejection_counts = [
+        {key: 0 for key in rejection_keys} for _result in results
+    ]
+
+    def reject(candidate, reason):
+        rejection_counts[reason] += 1
+        result_rejection_counts[candidate["_result_index"]][reason] += 1
+
     if profile == "all":
         selected = candidates
     else:
-        config = {
-            "balanced": {
-                "minimum_confidence": 0.50,
-                "max_total": 220,
-                "max_per_source": 45,
-                "same_source_overlap": 0.45,
-                "same_source_gap": 250,
-                "cross_source_overlap": 0.75,
-                "max_sources_per_region": 2,
-            },
-            "high_precision": {
-                "minimum_confidence": 0.66,
-                "max_total": 90,
-                "max_per_source": 18,
-                "same_source_overlap": 0.20,
-                "same_source_gap": 1100,
-                "cross_source_overlap": 0.55,
-                "max_sources_per_region": 1,
-            },
-        }[profile]
+        config = EVIDENCE_PROFILE_CONFIGS[profile]
+        eligible = []
+        for candidate in candidates:
+            if not _passes_evidence_profile(candidate, profile):
+                reject(candidate, "profile_rule")
+                continue
+            if candidate["confidence_score"] < config["minimum_confidence"]:
+                reject(candidate, "confidence")
+                continue
+            eligible.append(candidate)
+
         ranked = sorted(
-            (
-                candidate for candidate in candidates
-                if _passes_evidence_profile(candidate, profile)
-                and candidate["confidence_score"]
-                >= config["minimum_confidence"]
-            ),
+            eligible,
             key=lambda item: (
                 item["confidence_score"],
                 item.get("evidence_count", 1),
@@ -730,13 +781,18 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
         selected = []
         source_counts = defaultdict(int)
         for candidate in ranked:
+            if len(selected) >= config["max_total"]:
+                reject(candidate, "total_cap")
+                continue
             source_file = candidate.get("source_file", "")
             if source_counts[source_file] >= config["max_per_source"]:
+                reject(candidate, "source_cap")
                 continue
             if not (
                 _valid_evidence_span(candidate, "student")
                 and _valid_evidence_span(candidate, "source")
             ):
+                reject(candidate, "invalid_span")
                 continue
 
             candidate_student = (
@@ -747,26 +803,23 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
                 kept_student = (kept["student_start"], kept["student_end"])
                 overlap = _interval_overlap_ratio(
                     candidate_student, kept_student)
-                gap = _span_gap(*candidate_student, *kept_student)
                 if kept.get("source_file") == source_file:
-                    if (
-                        overlap >= config["same_source_overlap"]
-                        or gap <= config["same_source_gap"]
-                    ):
+                    if _same_source_evidence_is_duplicate(
+                            kept, candidate, config):
                         duplicate = True
                         break
                 elif overlap >= config["cross_source_overlap"]:
                     competing_sources.add(kept.get("source_file"))
 
             if duplicate:
+                reject(candidate, "same_source_duplicate")
                 continue
             if len(competing_sources) >= config["max_sources_per_region"]:
+                reject(candidate, "cross_source_competition")
                 continue
 
             selected.append(candidate)
             source_counts[source_file] += 1
-            if len(selected) >= config["max_total"]:
-                break
 
     selected_by_result = defaultdict(list)
     for candidate in selected:
@@ -789,6 +842,7 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
             "candidate_count": candidate_count,
             "shown_count": len(shown),
             "hidden_count": max(0, candidate_count - len(shown)),
+            "rejections": result_rejection_counts[result_index],
         }
 
     return {
@@ -796,6 +850,7 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
         "candidate_count": len(candidates),
         "shown_count": len(selected),
         "hidden_count": max(0, len(candidates) - len(selected)),
+        "rejections": rejection_counts,
     }
 
 
@@ -1797,6 +1852,7 @@ def perform_plagiarism_scan(test_content, ml_state):
             "evidence_count": evidence_selection["shown_count"],
             "evidence_hidden_count": evidence_selection["hidden_count"],
             "evidence_profile": evidence_profile,
+            "evidence_rejections": evidence_selection["rejections"],
             "evidence_reduction_percent": round(
                 (
                     1.0 - evidence_selection["shown_count"]

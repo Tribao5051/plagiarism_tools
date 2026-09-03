@@ -53,6 +53,30 @@ semantic_encode_batch_size = 48
 semantic_max_length = 512
 hybrid_candidate_limit = 20
 semantic_retrieval_results_per_chunk = 8
+semantic_strong_threshold = 0.72
+semantic_fallback_threshold = 0.68
+semantic_fallback_margin = 0.035
+semantic_sources_per_student_chunk = 2
+semantic_nms_student_window = 700
+semantic_nms_source_window = 900
+
+[detection.evidence_profiles.balanced]
+minimum_confidence = 0.50
+max_total = 220
+max_per_source = 12
+same_source_student_overlap = 0.45
+same_source_student_gap = 250
+cross_source_overlap = 0.75
+max_sources_per_region = 2
+
+[detection.evidence_profiles.high_precision]
+minimum_confidence = 0.66
+max_total = 90
+max_per_source = 2
+same_source_student_overlap = 0.20
+same_source_student_gap = 1100
+cross_source_overlap = 0.55
+max_sources_per_region = 1
 
 [api]
 default_retrieval_strategy = "shortlist"
