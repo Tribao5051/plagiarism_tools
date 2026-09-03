@@ -1,0 +1,53 @@
+# --- Python Specific ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# --- Large Data Folders ---
+# If your 100-page datasets are huge, ignore the raw folder
+# but keep the processed ones if needed.
+data/raw/
+temp_results/
+benchmark_results/
+*.log
+
+plagiarism_db/
+plagiarism_db1/
+project_cache/
+report/
+temp_evidence_room/
+main_db/
+main_folder/
+PAN/
+Webis-CPC-11/
+ai_model_cache/
+en/
+en1/
+mini-dataset/
+mini-dataset-copy/
+mpl-temp/
+mpl_temp/
+.matplotlib_report_cache/
+webis_1/
+data/
+corpus_index.pkl
+fingerprints.pkl
+# --- System Files ---
+.DS_Store
+Thumbs.db
+chap3.pdf
+# --- Sensitive Info ---
+.env
+dspace_config.json
+dspace_corpus/
+faculty_indexes/
+corpus_scheduler_state.json
+corpus_normalized_combined/
+corpus_vector_db/
+corpus_vector_db_combined/
+evaluation_folder/
+combined_test_corpus/
+debug_extractions/
+test_corpus_final/

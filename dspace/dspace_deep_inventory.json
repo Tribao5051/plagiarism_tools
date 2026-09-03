@@ -1,0 +1,479 @@
+{
+  "summary": {
+    "collectionCount": 6,
+    "nonemptyCollectionCount": 3,
+    "totalCollectionItemRelations": 108,
+    "accessMode": "anonymous"
+  },
+  "collectionCounts": [
+    {
+      "communityName": "HCMUT Digital Library -Dspace",
+      "communityUuid": "e6debde6-4097-4f2a-968e-61602791acd6",
+      "collectionName": "Các hướng dẫn sữ dụng dịch vu, tài nguyên của thư viện HCMUT",
+      "collectionUuid": "fd182551-a33a-414a-9304-af9c834248fe",
+      "collectionHandle": "123456789/9",
+      "itemCount": 1
+    },
+    {
+      "communityName": "HCMUT Digital Library -Dspace",
+      "communityUuid": "e6debde6-4097-4f2a-968e-61602791acd6",
+      "collectionName": "Học liệu mở - Open Education Resource",
+      "collectionUuid": "70c26636-7a14-492a-9ab8-c1ea1650bd35",
+      "collectionHandle": "123456789/2",
+      "itemCount": 0
+    },
+    {
+      "communityName": "HCMUT Digital Library -Dspace",
+      "communityUuid": "e6debde6-4097-4f2a-968e-61602791acd6",
+      "collectionName": "Library's Conference - Workshop",
+      "collectionUuid": "e079b5bd-d0d6-44e0-b030-2bc142eb3d33",
+      "collectionHandle": "123456789/4",
+      "itemCount": 2
+    },
+    {
+      "communityName": "HCMUT Digital Library -Dspace",
+      "communityUuid": "e6debde6-4097-4f2a-968e-61602791acd6",
+      "collectionName": "Tài liệu nội bộ HCMUT Library",
+      "collectionUuid": "ebe765ff-e4d3-471f-81c8-c2c589d7da6e",
+      "collectionHandle": "123456789/5",
+      "itemCount": 0
+    },
+    {
+      "communityName": "Năm 2021",
+      "communityUuid": "eca0fa89-4a68-4252-bdec-e6f48ebb12b4",
+      "collectionName": "Khoa Khoa học và Kỹ thuật Máy tính",
+      "collectionUuid": "b0a2317a-f810-4237-b3d3-721c77a3a1e0",
+      "collectionHandle": "123456789/8814",
+      "itemCount": 105
+    },
+    {
+      "communityName": "Năm 2022",
+      "communityUuid": "8dea8a5f-dbed-4f1a-a433-63bfe47ca878",
+      "collectionName": "Khoa Khoa học và Kỹ thuật Máy tính",
+      "collectionUuid": "1b6899ba-0661-41e3-901e-4a7e2c635951",
+      "collectionHandle": "123456789/8816",
+      "itemCount": 0
+    }
+  ],
+  "targetInspection": {
+    "collection": {
+      "name": "Khoa Khoa học và Kỹ thuật Máy tính",
+      "uuid": "b0a2317a-f810-4237-b3d3-721c77a3a1e0",
+      "handle": "123456789/8814",
+      "metadata": {
+        "dc.identifier.uri": [
+          {
+            "value": "http://dspace.lib.test/handle/123456789/8814",
+            "language": null,
+            "authority": null,
+            "confidence": -1,
+            "place": 0
+          }
+        ],
+        "dc.title": [
+          {
+            "value": "Khoa Khoa học và Kỹ thuật Máy tính",
+            "language": null,
+            "authority": null,
+            "confidence": -1,
+            "place": 0
+          }
+        ]
+      }
+    },
+    "totalItems": 105,
+    "inspectedItemCount": 3,
+    "items": [
+      {
+        "name": "Developing a real estate support system:",
+        "uuid": "01588d8f-e656-48ff-a445-357a4dfdfda1",
+        "handle": "123456789/8953",
+        "metadata": {
+          "dc.contributor.author": [
+            {
+              "value": "Tran Vu Hong Thien, Nguyen Thanh Quoc Minh, Nguyen Duc Khanh.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.date.accessioned": [
+            {
+              "value": "2026-08-11T09:08:50Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:20Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.available": [
+            {
+              "value": "2026-08-11T09:08:50Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:20Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.issued": [
+            {
+              "value": "2021",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description": [
+            {
+              "value": "Luận văn tốt nghiệp đại học.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description.abstract": [
+            {
+              "value": "The main objective of this thesis is to develop an real-estate data collection and analysis system, specifically data from Vietnamese C2C e-commerce websites. The built system needs to meet the data source of the nature of big data, with a distributed col lection, storage and processing mechanism. At the same time, the system also needs to solve some problems arising in the collection process such as anti-crawling. In addition to the collected data, the thesis also proposes a decision support application using some machine learning methods for data mining.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.identifier.uri": [
+            {
+              "value": "http://dspace.lib.test/handle/123456789/8953",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.publisher": [
+            {
+              "value": "Trường Đại học Bách Khoa.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.subject": [
+            {
+              "value": "Computer science",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.title": [
+            {
+              "value": "Developing a real estate support system:",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ]
+        },
+        "files": [
+          {
+            "bundle": "ORIGINAL",
+            "name": "Tran Vu Hong Thien.pdf",
+            "uuid": "52fe8c02-61f7-4bbb-ba6a-0454b183a7b5",
+            "sizeBytes": 7600787,
+            "contentUrl": "http://dspace.lib.test/server/api/core/bitstreams/52fe8c02-61f7-4bbb-ba6a-0454b183a7b5/content",
+            "access": {
+              "checked": true,
+              "readable": true,
+              "httpStatus": 206,
+              "contentType": "application/pdf;charset=UTF-8",
+              "contentRange": "bytes 0-0/7600787"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Developing An Embedded Module Supporting Service Billing Methods",
+        "uuid": "021bf6b6-4115-4c71-9b44-e0d40fe54cfb",
+        "handle": "123456789/8959",
+        "metadata": {
+          "dc.contributor.author": [
+            {
+              "value": "Cu Tan Phat, Nguyen Ngoc Anh Tuan.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.date.accessioned": [
+            {
+              "value": "2026-08-11T09:08:53Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:22Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.available": [
+            {
+              "value": "2026-08-11T09:08:53Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:22Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.issued": [
+            {
+              "value": "2021",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description": [
+            {
+              "value": "Luận văn tốt nghiệp đại học.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description.abstract": [
+            {
+              "value": "In this report, we will talk about the the advantages of modern authentication technologies, specially in the situation of the world is suffering through the COVID- 19 pandemic. From those point, we will propose an integrated module and a model that make use of the scanning code and near communication protocol technologies in providing residence, entertainment and FB services. We also show our implementation in developing the module and building a simple system that could be applied by a business in case of using our module.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.identifier.uri": [
+            {
+              "value": "http://dspace.lib.test/handle/123456789/8959",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.publisher": [
+            {
+              "value": "Trường Đại học Bách Khoa.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.subject": [
+            {
+              "value": "Khoa học máy tính",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.title": [
+            {
+              "value": "Developing An Embedded Module Supporting Service Billing Methods",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.title.alternative": [
+            {
+              "value": "Phát triển mô-đun nhúng hỗ trợ nhiều loại mô hình thanh toán dịch vụ",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ]
+        },
+        "files": [
+          {
+            "bundle": "ORIGINAL",
+            "name": "Cu Tan Phat.pdf",
+            "uuid": "e8fdfd1f-8f0d-4d66-a728-5755d469aa64",
+            "sizeBytes": 3480491,
+            "contentUrl": "http://dspace.lib.test/server/api/core/bitstreams/e8fdfd1f-8f0d-4d66-a728-5755d469aa64/content",
+            "access": {
+              "checked": true,
+              "readable": true,
+              "httpStatus": 206,
+              "contentType": "application/pdf;charset=UTF-8",
+              "contentRange": "bytes 0-0/3480491"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Phát triển hệ thống quản lý chuỗi khách sạn",
+        "uuid": "0380e3da-b037-41da-aa41-39b591572c3b",
+        "handle": "123456789/8866",
+        "metadata": {
+          "dc.contributor.author": [
+            {
+              "value": "Trần, Vủ Hiếu",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.date.accessioned": [
+            {
+              "value": "2026-08-11T09:08:19Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:17Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.available": [
+            {
+              "value": "2026-08-11T09:08:19Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            },
+            {
+              "value": "2026-08-19T04:17:17Z",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 1
+            }
+          ],
+          "dc.date.issued": [
+            {
+              "value": "2021",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description": [
+            {
+              "value": "Luận văn tốt nghiệp đại học.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.description.abstract": [
+            {
+              "value": "Mục tiêu của đề tài nhằm xây dựng một hệ thống quản lý chuỗi khách sạn để cung cấp những tính năng cơ bản và quan trọng đáp ứng phù hợp cho việc quản lý chuỗi khách sạn đạt hiệu quả.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.identifier.uri": [
+            {
+              "value": "http://dspace.lib.test/handle/123456789/8866",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.publisher": [
+            {
+              "value": "Trường Đại học Bách Khoa.",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.subject": [
+            {
+              "value": "Khoa học máy tính",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ],
+          "dc.title": [
+            {
+              "value": "Phát triển hệ thống quản lý chuỗi khách sạn",
+              "language": null,
+              "authority": null,
+              "confidence": -1,
+              "place": 0
+            }
+          ]
+        },
+        "files": [
+          {
+            "bundle": "ORIGINAL",
+            "name": "Tran Vu Hieu.pdf",
+            "uuid": "42dd16a5-c0e2-4a1d-860b-c9cf04ecdc77",
+            "sizeBytes": 3054971,
+            "contentUrl": "http://dspace.lib.test/server/api/core/bitstreams/42dd16a5-c0e2-4a1d-860b-c9cf04ecdc77/content",
+            "access": {
+              "checked": true,
+              "readable": true,
+              "httpStatus": 206,
+              "contentType": "application/pdf;charset=UTF-8",
+              "contentRange": "bytes 0-0/3054971"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

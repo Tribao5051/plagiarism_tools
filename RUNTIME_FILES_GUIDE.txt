@@ -1,0 +1,165 @@
+PLAGIARISM RUNTIME PACKAGE
+
+Folder dich:
+  D:\hochanh\hk252\plagiarism_runtime
+
+Folder nay chi chua source/config can de chay he thong. Khong kem test,
+evaluation, dataset, report, venv, model cache, DSpace corpus hay vector DB.
+
+1. CAC FILE PYTHON
+
+api_service.py
+  FastAPI backend. Nhan file PDF/TXT va faculty tu frontend, chon index cua
+  dung khoa, goi detector va tra JSON evidence/performance.
+
+detection_module_diff_p4.py
+  Core plagiarism detector. Chay candidate retrieval, semantic matching,
+  verbatim/fingerprint matching, gop evidence va chon evidence hien thi.
+
+pdf_extract.py
+  Trich xuat text tu PDF/TXT, lam sach noi dung nhung giu thu tu van ban de
+  detector co the tim va hien thi evidence.
+
+vector_db.py
+  Trich text, chunk, encode bang BGE-M3 tren GPU va ghi ChromaDB. Moi lan chay
+  xu ly mot khoa va tao normalized text + vector DB rieng cho khoa do.
+
+model_module.py
+  Quan ly singleton BGE-M3 de API khong load model lai cho moi request.
+
+chunking_config.py
+  Tao Chonkie semantic/token/recursive chunker tu plagiarism_config.toml.
+
+corpus_metadata.py
+  Chuan hoa faculty/source key, doc sidecar metadata, checksum va quan ly
+  normalized text/provenance.
+
+project_config.py
+  Doc plagiarism_config.toml, resolve path va tra chunk profile/index path.
+
+vector_db_readable.py
+  Ban tuan tu de doc va hoc flow vector DB. Khong log, report, GPU monitor,
+  worker hay queue; khong thay the vector_db.py khi chay production.
+
+dspace_sync.py
+  Duyet tat ca DSpace community/collection, download ORIGINAL PDF/TXT va gom
+  collection cung ten vao dspace_corpus/<collection-key>/. Xac minh checksum
+  DSpace + SHA-256 local, luu provenance va xoa stale sau full sync thanh cong.
+
+dspace_vector_pipeline.py
+  Chay tron luong DSpace API den local corpus, hash/metadata, normalized text va
+  vector DB rieng cho tung collection bang mot lenh.
+
+corpus_scheduler.py
+  Dieu phoi DSpace sync va vector_db. So sanh snapshot tung khoa, chi index lai
+  khoa co file moi/sua/xoa, sau do cho den chu ky tiep theo.
+
+2. CAC FILE CAU HINH
+
+plagiarism_config.toml
+  Cau hinh model, chunk size/overlap, GPU batch, workers, retrieval, API va chu
+  ky scheduler. Nhom [dspace] chua API, auth environment, corpus va quy tac sync.
+  Semantic la flow mac dinh hien tai.
+
+dspace_config.example.json
+  Mau JSON cu van duoc dspace_sync.py ho tro de tuong thich. Flow moi dung nhom
+  [dspace] trong plagiarism_config.toml.
+
+requirements_runtime.txt
+  Danh sach package Python/CUDA can cho runtime.
+
+.gitignore
+  Ngan venv, model cache, DSpace corpus, vector DB, credentials va output nang
+  bi commit nham.
+
+3. CAC LENH CMD
+
+setup_runtime.cmd
+  Tao venv Python 3.12 va cai requirements.
+
+run_dspace_once.cmd
+  Sync DSpace va index cac khoa thay doi mot lan, sau do thoat.
+
+run_monthly_dspace_sync.cmd
+  Sync ngay khi khoi dong, sau do lap lai sau moi 30 ngay.
+
+run_api.cmd
+  Khoi dong FastAPI tai http://127.0.0.1:8000.
+
+runtime_self_test.py
+  Chay unit/self-test cho config, CUDA, metadata, scheduler, stale source va API
+  contract ma khong can corpus hoac server.
+
+benchmark_runtime.py
+  Benchmark cong bang tren cung file/SHA-256: chunking, GPU batch, full
+  vector_db va API latency. Luu JSON + text report trong benchmark_results/.
+
+benchmark_pdf_extraction.py
+  Chon PDF theo phan vi kich thuoc, benchmark extraction tren cung SHA-256,
+  khong luu extracted text. Bao cao byte PDF/text va uoc tinh 10-15 file.
+
+4. THU TU CHAY LAN DAU
+
+  cd /d D:\hochanh\hk252\plagiarism_runtime
+  setup_runtime.cmd
+
+Sua [dspace] trong plagiarism_config.toml, sau do:
+
+  run_dspace_once.cmd
+  run_api.cmd
+
+Kiem tra runtime:
+
+  python runtime_self_test.py
+
+Benchmark vector tren cung mot tap file:
+
+  python benchmark_runtime.py vector --corpus <corpus-folder> --model-cache <project-cache-folder> --sample-size 8 --full-index semantic:32 semantic:48 token:32
+
+Benchmark API sau khi server da chay:
+
+  python benchmark_runtime.py api --submissions <test-folder> --faculty <faculty-key>
+
+Benchmark 15 PDF DSpace ma khong luu extracted text:
+
+  python benchmark_pdf_extraction.py --corpus dspace_corpus --sample-size 15 --repeats 2
+
+Preview toi da 15 ORIGINAL PDF, khong cleanup corpus vi day la limited sync:
+
+  python dspace_vector_pipeline.py --config plagiarism_config.toml --dry-run --max-downloads 15 --max-per-collection 8
+
+Frontend lay khoa hop le:
+
+  GET http://127.0.0.1:8000/faculties
+
+Frontend scan:
+
+  POST http://127.0.0.1:8000/scan?faculty=<faculty-key>
+
+faculty cung co the duoc gui trong FormData cung voi file.
+
+5. CAC FOLDER DU LIEU SE TU DUOC TAO
+
+venv/
+  Moi truong Python sau khi chay setup_runtime.cmd.
+
+project_cache/
+  Cache BGE-M3/Hugging Face.
+
+dspace_corpus/
+  Ban local cua tai lieu DSpace, chia theo ten collection. Sidecar luu item,
+  bitstream, collection, community, checksum va SHA-256. Collection cung ten o
+  nhieu nam duoc gom chung, nhung UUID/community van duoc giu trong metadata.
+
+faculty_indexes/<index_version>/<faculty>/
+  vector_db/, normalized/, corpus_index.json va performance report tung khoa.
+  PDF scan/loi khong co text duoc bao la unindexable, khong lam ca index fail.
+
+6. KHONG CO TRONG PACKAGE
+
+- test_*.py va moi test folder.
+- evaluate_*.py, evaluation_results va PAN dataset.
+- Bao cao Word/PDF/CSV/HTML.
+- Corpus va vector DB cu.
+- venv va model cache cu.
+- DSPACE_USERNAME, DSPACE_PASSWORD hoac DSPACE_BEARER_TOKEN.

@@ -1,0 +1,28 @@
+{
+  "base_url": "https://dspace.example.edu/server",
+  "output_dir": "dspace_corpus",
+  "page_size": 100,
+  "request_timeout_seconds": 60,
+  "discover_all_collections": true,
+  "group_by_collection_name": true,
+  "bearer_token_env": "DSPACE_BEARER_TOKEN",
+  "username_env": "DSPACE_USERNAME",
+  "password_env": "DSPACE_PASSWORD",
+  "default_faculty": "unassigned",
+  "fetch_full_item_metadata": true,
+  "faculty_metadata_fields": [
+    "local.department",
+    "dc.contributor.department",
+    "dc.subject.department"
+  ],
+  "faculty_value_map": {
+    "Faculty of Information Technology": "information-technology",
+    "faculty of information technology": "information-technology",
+    "faculty-of-information-technology": "information-technology"
+  },
+  "allowed_extensions": [
+    ".pdf",
+    ".txt"
+  ],
+  "scopes": []
+}

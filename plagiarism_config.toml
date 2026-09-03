@@ -1,0 +1,85 @@
+[model]
+name = "BAAI/bge-m3"
+cache_dir = "project_cache"
+use_fp16_on_cuda = true
+encode_max_length = 512
+
+[chunking]
+default_strategy = "semantic"
+
+[chunking.profiles.recursive_character]
+strategy = "recursive_character"
+index_version = "bge_m3_c400_o80_v1"
+chunk_size = 400
+chunk_size_unit = "characters"
+chunk_overlap = 80
+min_chunk_characters = 24
+
+[chunking.profiles.semantic]
+strategy = "semantic"
+index_version = "bge_m3_semantic_potion384_v1"
+chunk_size = 384
+chunk_size_unit = "tokens"
+chunk_overlap = 0
+min_chunk_characters = 24
+semantic_embedding_model = "minishlab/potion-base-32M"
+semantic_threshold = 0.8
+semantic_similarity_window = 3
+semantic_min_sentences = 2
+
+[chunking.profiles.token]
+strategy = "token"
+index_version = "bge_m3_t384_o64_v2"
+chunk_size = 384
+chunk_size_unit = "tokens"
+chunk_overlap = 64
+chunk_overlap_search_characters = 512
+min_chunk_characters = 24
+tokenizer = "BAAI/bge-m3"
+
+[indexing]
+faculty_index_root = "faculty_indexes"
+collection_name = "corpus_vault"
+semantic_extract_workers = 1
+default_extract_workers = 4
+encode_batch_size = 32
+gpu_queue_target_chunks = 2048
+max_chroma_batch = 5000
+work_queue_max_files = 8
+write_queue_max_batches = 2
+
+[detection]
+semantic_encode_batch_size = 48
+semantic_max_length = 512
+hybrid_candidate_limit = 20
+semantic_retrieval_results_per_chunk = 8
+
+[api]
+default_retrieval_strategy = "shortlist"
+default_evidence_profile = "balanced"
+max_upload_mb = 50
+
+[scheduler]
+interval_days = 30
+strategy = "semantic"
+dspace_config = "plagiarism_config.toml"
+state_file = "corpus_scheduler_state.json"
+
+[dspace]
+base_url = "http://dspace.lib.test/server"
+output_dir = "dspace_corpus"
+page_size = 100
+request_timeout_seconds = 60
+discover_all_collections = true
+group_by_collection_name = true
+default_faculty = "unassigned"
+fetch_full_item_metadata = true
+bearer_token_env = "DSPACE_BEARER_TOKEN"
+username_env = "DSPACE_USERNAME"
+password_env = "DSPACE_PASSWORD"
+allowed_extensions = [".pdf", ".txt"]
+faculty_metadata_fields = []
+scopes = []
+stop_indexing_on_sync_errors = true
+
+[dspace.faculty_value_map]
