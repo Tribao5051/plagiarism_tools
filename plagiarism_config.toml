@@ -81,7 +81,7 @@ max_sources_per_region = 1
 [detection.evidence_profiles.agreement]
 minimum_confidence = 0.40
 max_total = 220
-max_per_source = 8
+max_per_source = 4
 same_source_student_overlap = 0.45
 same_source_student_gap = 250
 cross_source_overlap = 0.75
