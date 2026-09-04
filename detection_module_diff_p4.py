@@ -20,6 +20,7 @@ from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from pdf_extract import extract_university_content
 from model_module import model_manager, device
+from evidence_reranker import agreement_score, evidence_feature_vector
 from project_config import load_project_config
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_CONFIG = load_project_config()
@@ -59,8 +60,8 @@ PASSAGE_ALIGNMENT_TOLERANCE = 700
 PASSAGE_CONTEXT_CHARS = 1200
 PASSAGE_MAX_STUDENT_CHARS = 3500
 PASSAGE_MAX_SOURCE_CHARS = 4500
-EVIDENCE_PROFILES = {"balanced", "high_precision", "all"}
-DEFAULT_EVIDENCE_PROFILE = "balanced"
+EVIDENCE_PROFILES = {"agreement", "balanced", "high_precision", "all"}
+DEFAULT_EVIDENCE_PROFILE = "agreement"
 DEFAULT_EVIDENCE_PROFILE_CONFIGS = {
     "balanced": {
         "minimum_confidence": 0.50,
@@ -78,6 +79,15 @@ DEFAULT_EVIDENCE_PROFILE_CONFIGS = {
         "same_source_student_overlap": 0.20,
         "same_source_student_gap": 1100,
         "cross_source_overlap": 0.55,
+        "max_sources_per_region": 1,
+    },
+    "agreement": {
+        "minimum_confidence": 0.40,
+        "max_total": 220,
+        "max_per_source": 8,
+        "same_source_student_overlap": 0.45,
+        "same_source_student_gap": 250,
+        "cross_source_overlap": 0.75,
         "max_sources_per_region": 1,
     },
 }
@@ -669,6 +679,9 @@ def _passes_evidence_profile(evidence, profile):
     if profile == "all":
         return True
 
+    if profile == "agreement":
+        return True
+
     evidence_type = evidence.get("type", "semantic")
     semantic_score = float(evidence.get("semantic_score") or 0.0)
     lexical_score = float(evidence.get("lexical_score") or 0.0)
@@ -714,6 +727,45 @@ def _passes_evidence_profile(evidence, profile):
     return False
 
 
+def _assign_agreement_scores(candidates, results):
+    """Add a deterministic Phase 7 score without changing detector evidence."""
+    document_end = max(
+        (int(candidate.get("student_end") or 0) for candidate in candidates),
+        default=1,
+    )
+    by_source = defaultdict(list)
+    for candidate in candidates:
+        by_source[candidate.get("source_file", "")].append(candidate)
+
+    for source_candidates in by_source.values():
+        ranked = sorted(
+            source_candidates,
+            key=lambda item: (
+                item["confidence_score"],
+                float(item.get("semantic_score") or 0.0),
+                float(item.get("lexical_score") or 0.0),
+                int(item.get("evidence_count") or 0),
+            ),
+            reverse=True,
+        )
+        for candidate_rank, candidate in enumerate(ranked):
+            result = results[candidate["_result_index"]]
+            context = {
+                "document_end": document_end,
+                "source_candidate_count": len(source_candidates),
+                "source_rank": candidate["_result_index"],
+                "candidate_rank": candidate_rank,
+            }
+            features = evidence_feature_vector(candidate, result, context)
+            score = agreement_score({"features": features})
+            candidate["agreement_score"] = round(score, 4)
+            candidate["agreement_level"] = (
+                "high" if score >= 0.65
+                else "medium" if score >= 0.40
+                else "low"
+            )
+
+
 def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
     """Phase 7: rank and de-duplicate passages for user-facing output."""
     if profile not in EVIDENCE_PROFILES:
@@ -737,6 +789,7 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
     rejection_keys = (
         "profile_rule",
         "confidence",
+        "agreement_score",
         "invalid_span",
         "source_cap",
         "same_source_duplicate",
@@ -755,21 +808,31 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
     if profile == "all":
         selected = candidates
     else:
+        if profile == "agreement":
+            _assign_agreement_scores(candidates, results)
         config = EVIDENCE_PROFILE_CONFIGS[profile]
+        score_field = (
+            "agreement_score" if profile == "agreement"
+            else "confidence_score"
+        )
         eligible = []
         for candidate in candidates:
             if not _passes_evidence_profile(candidate, profile):
                 reject(candidate, "profile_rule")
                 continue
-            if candidate["confidence_score"] < config["minimum_confidence"]:
-                reject(candidate, "confidence")
+            if candidate[score_field] < config["minimum_confidence"]:
+                reject(
+                    candidate,
+                    "agreement_score" if profile == "agreement"
+                    else "confidence",
+                )
                 continue
             eligible.append(candidate)
 
         ranked = sorted(
             eligible,
             key=lambda item: (
-                item["confidence_score"],
+                item[score_field],
                 item.get("evidence_count", 1),
                 item.get("verbatim_characters", 0),
                 item.get("semantic_score") or 0.0,

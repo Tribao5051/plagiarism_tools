@@ -92,6 +92,40 @@ class EvidenceSelectionTests(unittest.TestCase):
         self.assertEqual(len(selected), 2)
         self.assertEqual(summary["hidden_count"], 0)
 
+    def test_agreement_rejects_weak_semantic_only_evidence(self):
+        weak = semantic_evidence(100, 300, 1000, 1200, score=0.73)
+        weak["student_match_text"] = "unrelated student passage"
+        weak["source_match_text"] = "different source passage"
+        weak.pop("lexical_score", None)
+        weak["evidence_count"] = 1
+        results = [result_with(weak)]
+
+        summary = select_display_evidence(results, profile="agreement")
+
+        self.assertEqual(results[0]["evidence"], [])
+        self.assertEqual(summary["rejections"]["agreement_score"], 1)
+
+    def test_agreement_keeps_strong_multi_signal_evidence(self):
+        strong = semantic_evidence(100, 300, 1000, 1200, score=0.91)
+        strong.update({
+            "type": "verbatim_semantic",
+            "lexical_score": 0.88,
+            "verbatim_characters": 240,
+            "match_methods": [
+                "dense_embedding",
+                "lexical_window",
+                "verbatim_fingerprint",
+            ],
+        })
+        results = [result_with(strong)]
+
+        summary = select_display_evidence(results, profile="agreement")
+
+        self.assertEqual(len(results[0]["evidence"]), 1)
+        shown = results[0]["evidence"][0]
+        self.assertGreaterEqual(shown["agreement_score"], 0.40)
+        self.assertEqual(summary["shown_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
