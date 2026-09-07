@@ -8,6 +8,8 @@ import unittest
 from collections import OrderedDict
 from unittest.mock import patch
 
+from tests import _project_paths
+
 import fitz
 import torch
 from fastapi import UploadFile
@@ -25,7 +27,12 @@ import dspace_sync
 from dspace_sync import DSpaceClient, checksum_matches, resolve_faculty
 from dspace_vector_pipeline import collection_corpora
 from pdf_extract import extract_university_content
-from project_config import get_chunking_profile, load_project_config
+from project_config import (
+    DEFAULT_CONFIG_PATH,
+    PROJECT_ROOT,
+    get_chunking_profile,
+    load_project_config,
+)
 from vector_db import remove_stale_sources
 
 
@@ -56,6 +63,17 @@ class FakeSemanticCollection:
 
 
 class RuntimeSelfTests(unittest.TestCase):
+    def test_reorganized_runtime_paths_keep_existing_state_root(self):
+        self.assertEqual(
+            DEFAULT_CONFIG_PATH,
+            os.path.join(PROJECT_ROOT, "runtime", "plagiarism_config.toml"),
+        )
+        self.assertEqual(
+            dspace_sync.resolve_output_dir(
+                {"output_dir": "dspace_corpus"}, DEFAULT_CONFIG_PATH),
+            os.path.join(PROJECT_ROOT, "dspace_corpus"),
+        )
+
     @staticmethod
     def build_pdf_bytes(pages):
         document = fitz.open()

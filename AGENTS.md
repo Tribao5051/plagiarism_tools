@@ -6,6 +6,15 @@
 - Do not modify `D:\hochanh\hk252\doan\project` unless the user explicitly
   requests it.
 
+## Directory Layout
+
+- `runtime/`: production source, configuration, requirements, and launchers.
+- `tests/`: unit and regression tests; run `tests\run_all_tests.cmd`.
+- `performance/`: benchmark scripts and ignored outputs under `results/`.
+- `docs/`: human-readable project documentation and change explanations.
+- `test_data/`: fixed manifests and metadata used for evaluation.
+- Keep `venv/`, `project_cache/`, and `faculty_indexes/` at the project root.
+
 ## Write Access
 
 - Read-only inspection and test execution are allowed by default.

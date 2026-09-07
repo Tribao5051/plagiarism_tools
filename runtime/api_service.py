@@ -7,7 +7,7 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from project_config import load_project_config, resolve_project_path
+from project_config import PROJECT_ROOT, load_project_config, resolve_project_path
 
 # Cache configuration must be set before importing model libraries.
 if hasattr(sys.stdout, "reconfigure"):
@@ -15,7 +15,6 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_CONFIG = load_project_config()
 MODEL_CONFIG = PROJECT_CONFIG["model"]
 INDEXING_CONFIG = PROJECT_CONFIG["indexing"]

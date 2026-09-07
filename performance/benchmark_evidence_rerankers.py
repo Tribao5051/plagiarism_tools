@@ -9,6 +9,8 @@ import time
 import warnings
 from collections import Counter
 
+from _runtime_path import PROJECT_ROOT
+
 import joblib
 import numpy as np
 from sklearn.ensemble import (
@@ -39,8 +41,7 @@ from evidence_reranker import (
 )
 
 
-RUNTIME_ROOT = pathlib.Path(__file__).resolve().parent
-DEFAULT_SPLIT = RUNTIME_ROOT / "reranker_experiment_split.json"
+DEFAULT_SPLIT = PROJECT_ROOT / "test_data" / "reranker_experiment_split.json"
 LABEL_SCHEMA_VERSION = "student_and_source_text_v2"
 CHARACTER_PRECISION_NOTE = (
     "Not computed: PAN XML offsets refer to original raw text, so character "
@@ -664,7 +665,7 @@ def add_cross_encoder_scores(cases, model_name, output_dir, batch_size, device):
         model = FlagReranker(
             model_name,
             use_fp16=device == "cuda",
-            cache_dir=str(RUNTIME_ROOT / "project_cache"),
+            cache_dir=str(PROJECT_ROOT / "project_cache"),
             devices=devices,
             batch_size=batch_size,
             max_length=512,
@@ -861,10 +862,10 @@ def main():
     args = parse_args()
     output_dir = pathlib.Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("HF_HOME", str(RUNTIME_ROOT / "project_cache"))
+    os.environ.setdefault("HF_HOME", str(PROJECT_ROOT / "project_cache"))
     os.environ.setdefault(
-        "TRANSFORMERS_CACHE", str(RUNTIME_ROOT / "project_cache"))
-    os.environ.setdefault("MPLCONFIGDIR", str(RUNTIME_ROOT / "mpl_temp"))
+        "TRANSFORMERS_CACHE", str(PROJECT_ROOT / "project_cache"))
+    os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_ROOT / "mpl_temp"))
 
     split = validate_experiment_split(json.loads(pathlib.Path(
         args.split_file).read_text(encoding="utf-8")))

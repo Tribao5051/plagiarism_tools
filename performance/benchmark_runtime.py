@@ -14,6 +14,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from _runtime_path import PROJECT_ROOT, RUNTIME_ROOT
+
 import psutil
 import requests
 
@@ -167,7 +169,7 @@ def prepare_environment(model_cache):
     os.environ["HF_HOME"] = cache
     os.environ["HF_HUB_CACHE"] = str(Path(cache) / "hub")
     os.environ["SENTENCE_TRANSFORMERS_HOME"] = cache
-    os.environ["MPLCONFIGDIR"] = str(ROOT / "mpl_temp")
+    os.environ["MPLCONFIGDIR"] = str(PROJECT_ROOT / "mpl_temp")
     os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 
@@ -427,7 +429,7 @@ def run_full_index_benchmarks(
         environment["PLAGIARISM_CHUNKING_STRATEGY"] = strategy
         command = [
             sys.executable,
-            str(ROOT / "vector_db.py"),
+            str(RUNTIME_ROOT / "vector_db.py"),
             str(sample_corpus),
             "--faculty",
             "benchmark",
@@ -436,7 +438,7 @@ def run_full_index_benchmarks(
         with open(log_path, "w", encoding="utf-8") as log:
             completed = subprocess.run(
                 command,
-                cwd=ROOT,
+                cwd=PROJECT_ROOT,
                 env=environment,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -704,7 +706,7 @@ def run_api_benchmark(args):
 
 def default_output(prefix):
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return str(ROOT / "benchmark_results" / f"{prefix}_{stamp}")
+    return str(ROOT / "results" / f"{prefix}_{stamp}")
 
 
 def parse_args(argv=None):

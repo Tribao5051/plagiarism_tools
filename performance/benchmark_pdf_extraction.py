@@ -9,6 +9,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from _runtime_path import PROJECT_ROOT
+
 import fitz
 import psutil
 
@@ -258,11 +260,11 @@ def write_report(result, output_dir):
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Benchmark PDF extraction without persisting extracted text.")
-    parser.add_argument("--corpus", default=str(ROOT / "dspace_corpus"))
+    parser.add_argument("--corpus", default=str(PROJECT_ROOT / "dspace_corpus"))
     parser.add_argument("--sample-size", type=int, default=15)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument(
-        "--output", default=str(ROOT / "benchmark_results" / "pdf_extraction_15"))
+        "--output", default=str(ROOT / "results" / "pdf_extraction_15"))
     return parser.parse_args()
 
 

@@ -7,10 +7,10 @@ import time
 
 from corpus_metadata import METADATA_SUFFIX, normalize_faculty, write_json_file
 from dspace_sync import sync_dspace
-from project_config import load_project_config, resolve_project_path
+from project_config import PROJECT_ROOT, load_project_config, resolve_project_path
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+RUNTIME_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_CONFIG = load_project_config()
 SCHEDULER_CONFIG = PROJECT_CONFIG["scheduler"]
 DEFAULT_STATE_PATH = resolve_project_path(SCHEDULER_CONFIG["state_file"])
@@ -71,7 +71,7 @@ def run_vector_index(corpus_dir, faculty, strategy):
     environment["PLAGIARISM_CHUNKING_STRATEGY"] = strategy
     command = [
         sys.executable,
-        os.path.join(PROJECT_ROOT, "vector_db.py"),
+        os.path.join(RUNTIME_ROOT, "vector_db.py"),
         corpus_dir,
         "--faculty",
         faculty,

@@ -1,0 +1,31 @@
+PLAGIARISM RUNTIME - QUICK GUIDE
+
+Tai lieu chi tiet:
+  docs\PROJECT_GUIDE_DETAILED.md
+
+CAU TRUC
+  runtime\       source, config va CMD de chay he thong
+  tests\         unit/regression tests
+  performance\   benchmark scripts va results
+  docs\          tai lieu text/Markdown
+  test_data\     split manifest va metadata dung cho test
+
+CHAY API
+  cd /d D:\hochanh\hk252\plagiarism_runtime
+  runtime\run_api.cmd
+
+CHAY DSPACE + VECTOR DB MOT LAN
+  runtime\run_dspace_once.cmd
+
+CHAY SCHEDULER 30 NGAY
+  runtime\run_monthly_dspace_sync.cmd
+
+CHAY TOAN BO TEST
+  tests\run_all_tests.cmd
+
+CAC THU MUC GIU NGUYEN O PROJECT ROOT
+  venv\             Python environment
+  project_cache\    BGE-M3/Hugging Face model cache
+  faculty_indexes\  vector DB va normalized text theo khoa
+
+Khong xoa/rebuild ba thu muc tren khi chua co backup va benchmark ro rang.

@@ -16,10 +16,9 @@ from corpus_metadata import (
     normalize_faculty,
     write_json_file,
 )
+from project_config import DEFAULT_CONFIG_PATH, PROJECT_ROOT
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CONFIG_PATH = os.path.join(PROJECT_ROOT, "plagiarism_config.toml")
 DEFAULT_MANIFEST_NAME = "dspace_sync_manifest.json"
 
 
@@ -337,8 +336,7 @@ def resolve_output_dir(config, config_path):
     output_dir = config["output_dir"]
     if os.path.isabs(output_dir):
         return output_dir
-    return os.path.abspath(os.path.join(
-        os.path.dirname(os.path.abspath(config_path)), output_dir))
+    return os.path.abspath(os.path.join(PROJECT_ROOT, output_dir))
 
 
 def bitstream_checksum(bitstream):

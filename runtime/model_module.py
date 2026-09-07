@@ -2,7 +2,6 @@ import os
 
 from project_config import load_project_config, resolve_project_path
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_CONFIG = load_project_config()
 MODEL_CONFIG = PROJECT_CONFIG["model"]
 DEFAULT_CACHE_DIR = resolve_project_path(MODEL_CONFIG["cache_dir"])

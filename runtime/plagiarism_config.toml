@@ -96,7 +96,7 @@ allow_oracle_candidate_sources = false
 [scheduler]
 interval_days = 30
 strategy = "semantic"
-dspace_config = "plagiarism_config.toml"
+dspace_config = "runtime/plagiarism_config.toml"
 state_file = "corpus_scheduler_state.json"
 
 [dspace]

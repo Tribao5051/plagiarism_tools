@@ -11,6 +11,7 @@ env/
 data/raw/
 temp_results/
 benchmark_results/
+performance/results/
 *.log
 
 plagiarism_db/

@@ -5,8 +5,9 @@ import tomllib
 from functools import lru_cache
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CONFIG_PATH = os.path.join(PROJECT_ROOT, "plagiarism_config.toml")
+RUNTIME_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(RUNTIME_ROOT)
+DEFAULT_CONFIG_PATH = os.path.join(RUNTIME_ROOT, "plagiarism_config.toml")
 
 
 def resolve_project_path(value, project_root=PROJECT_ROOT):

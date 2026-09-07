@@ -2,6 +2,8 @@ import copy
 import math
 import unittest
 
+from tests import _project_paths
+
 from evidence_reranker import (
     FEATURE_NAMES,
     agreement_score,

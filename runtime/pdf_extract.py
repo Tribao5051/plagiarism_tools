@@ -3,7 +3,9 @@ import re
 import os
 import time
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+from project_config import PROJECT_ROOT
+
+
 DEBUG_FOLDER = os.path.join(PROJECT_ROOT, "debug_extractions")
 
 # =========================

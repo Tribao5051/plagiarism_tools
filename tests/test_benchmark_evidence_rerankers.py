@@ -2,6 +2,8 @@ import pathlib
 import tempfile
 import unittest
 
+from tests import _project_paths
+
 import benchmark_evidence_rerankers as benchmark
 
 

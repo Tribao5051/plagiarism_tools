@@ -21,8 +21,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pdf_extract import extract_university_content
 from model_module import model_manager, device
 from evidence_reranker import agreement_score, evidence_feature_vector
-from project_config import load_project_config
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+from project_config import PROJECT_ROOT, load_project_config
 PROJECT_CONFIG = load_project_config()
 DETECTION_CONFIG = PROJECT_CONFIG["detection"]
 corpus_dir = os.path.join(

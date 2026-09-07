@@ -3,6 +3,7 @@ import hashlib
 import os
 
 from project_config import (
+    PROJECT_ROOT,
     faculty_index_paths,
     get_chunking_profile,
     load_project_config,
@@ -10,7 +11,6 @@ from project_config import (
 )
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG = load_project_config()
 MODEL_CONFIG = CONFIG["model"]
 INDEXING_CONFIG = CONFIG["indexing"]

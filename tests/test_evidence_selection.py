@@ -1,6 +1,8 @@
 import copy
 import unittest
 
+from tests import _project_paths
+
 from detection_module_diff_p4 import select_display_evidence
 
 

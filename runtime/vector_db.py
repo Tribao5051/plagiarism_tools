@@ -7,13 +7,13 @@ import subprocess
 import hashlib
 
 from project_config import (
+    PROJECT_ROOT,
     faculty_index_paths,
     load_project_config,
     resolve_project_path,
 )
 
 # Set cache and telemetry environment before importing model/database libraries.
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_CONFIG = load_project_config()
 MODEL_CONFIG = PROJECT_CONFIG["model"]
 INDEXING_CONFIG = PROJECT_CONFIG["indexing"]

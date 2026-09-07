@@ -7,10 +7,10 @@ import time
 
 from corpus_metadata import normalize_faculty, write_json_file
 from dspace_sync import load_config, resolve_output_dir, sync_dspace
-from project_config import DEFAULT_CONFIG_PATH, load_project_config
+from project_config import DEFAULT_CONFIG_PATH, PROJECT_ROOT, load_project_config
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+RUNTIME_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def configure_stdout():
@@ -48,7 +48,7 @@ def run_vector_database(corpus, strategy):
     environment["PLAGIARISM_CHUNKING_STRATEGY"] = strategy
     command = [
         sys.executable,
-        os.path.join(PROJECT_ROOT, "vector_db.py"),
+        os.path.join(RUNTIME_ROOT, "vector_db.py"),
         corpus["path"],
         "--faculty",
         normalize_faculty(corpus["folder"]),
