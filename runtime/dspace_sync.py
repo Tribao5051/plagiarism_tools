@@ -6,7 +6,7 @@ import re
 import sys
 import time
 import tomllib
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import requests
 
@@ -20,6 +20,10 @@ from project_config import DEFAULT_CONFIG_PATH, PROJECT_ROOT
 
 
 DEFAULT_MANIFEST_NAME = "dspace_sync_manifest.json"
+
+
+class DSpaceTraversalError(RuntimeError):
+    pass
 
 
 def safe_filename(value):
@@ -165,6 +169,161 @@ class DSpaceClient:
         response.raise_for_status()
         return response.json()
 
+    def request_identity(self, path_or_url, params=None):
+        parsed = urlsplit(self.absolute_url(path_or_url))
+        parameter_keys = {str(key) for key in (params or {})}
+        query = [
+            (key, value)
+            for key, value in parse_qsl(
+                parsed.query, keep_blank_values=True)
+            if key not in parameter_keys
+        ]
+        query.extend(
+            (str(key), str(value)) for key, value in (params or {}).items())
+        return urlunsplit((
+            parsed.scheme.casefold(),
+            parsed.netloc.casefold(),
+            parsed.path,
+            urlencode(sorted(query)),
+            "",
+        ))
+
+    def list_paginated_unique(
+        self, path_or_url, embedded_key, page_size=100
+    ):
+        current_url = path_or_url
+        current_params = {"page": 0, "size": page_size}
+        expected_page = 0
+        expected_total_pages = None
+        requested_pages = set()
+        seen_page_numbers = set()
+        seen_page_signatures = set()
+        seen_uuids = set()
+        results = []
+
+        while True:
+            request_key = self.request_identity(current_url, current_params)
+            if request_key in requested_pages:
+                raise DSpaceTraversalError(
+                    f"Pagination repeated request/next-link: {request_key}")
+            requested_pages.add(request_key)
+
+            payload = self.get_json(current_url, params=current_params)
+            if not isinstance(payload, dict):
+                raise DSpaceTraversalError(
+                    f"Pagination response is not an object: {request_key}")
+            entries = embedded_list(payload, "_embedded", embedded_key)
+            page_info = payload.get("page") or {}
+            try:
+                page_number = int(page_info.get("number", expected_page))
+                raw_total_pages = page_info.get("totalPages")
+                total_pages = (
+                    int(raw_total_pages)
+                    if raw_total_pages is not None
+                    else None
+                )
+            except (TypeError, ValueError) as exc:
+                raise DSpaceTraversalError(
+                    f"Invalid pagination metadata for {request_key}: {exc}"
+                ) from exc
+
+            if page_number in seen_page_numbers:
+                raise DSpaceTraversalError(
+                    f"Pagination repeated page number {page_number}: "
+                    f"{request_key}")
+            seen_page_numbers.add(page_number)
+
+            page_uuids = []
+            for entry in entries:
+                entry_uuid = (
+                    entry.get("uuid") or entry.get("id")
+                    if isinstance(entry, dict) else None
+                )
+                if not entry_uuid:
+                    raise DSpaceTraversalError(
+                        f"{embedded_key} page {page_number} contains an "
+                        "entry without UUID")
+                page_uuids.append(str(entry_uuid))
+            page_signature = tuple(page_uuids)
+            if page_signature and page_signature in seen_page_signatures:
+                raise DSpaceTraversalError(
+                    f"Pagination repeated page content at page {page_number}: "
+                    f"{request_key}")
+            if page_signature:
+                seen_page_signatures.add(page_signature)
+
+            for entry, entry_uuid in zip(entries, page_uuids):
+                if entry_uuid in seen_uuids:
+                    continue
+                seen_uuids.add(entry_uuid)
+                results.append(entry)
+
+            if total_pages is not None:
+                if total_pages < 0 or (entries and total_pages == 0):
+                    raise DSpaceTraversalError(
+                        f"Invalid totalPages={total_pages}: {request_key}")
+                if expected_total_pages is None:
+                    expected_total_pages = total_pages
+                elif total_pages != expected_total_pages:
+                    raise DSpaceTraversalError(
+                        "Pagination totalPages changed from "
+                        f"{expected_total_pages} to {total_pages}: "
+                        f"{request_key}")
+
+            links = payload.get("_links") or {}
+            next_link = links.get("next") or {}
+            if not isinstance(next_link, dict):
+                raise DSpaceTraversalError(
+                    f"Invalid pagination next-link: {request_key}")
+            next_url = next_link.get("href")
+            has_more_pages = (
+                expected_total_pages is not None
+                and page_number + 1 < expected_total_pages
+            )
+            if not entries and has_more_pages:
+                raise DSpaceTraversalError(
+                    f"Pagination ended early at empty page {page_number}: "
+                    f"{request_key}")
+
+            if next_url:
+                next_key = self.request_identity(next_url)
+                if next_key in requested_pages:
+                    raise DSpaceTraversalError(
+                        f"Pagination repeated request/next-link: {next_key}")
+                if expected_total_pages is not None and not has_more_pages:
+                    raise DSpaceTraversalError(
+                        f"Unexpected next-link after final page: {next_key}")
+                current_url = next_url
+                current_params = None
+                expected_page = page_number + 1
+                continue
+
+            if has_more_pages:
+                current_url = path_or_url
+                current_params = {
+                    "page": page_number + 1,
+                    "size": page_size,
+                }
+                expected_page = page_number + 1
+                continue
+
+            if (
+                expected_total_pages is None
+                and len(entries) >= page_size
+            ):
+                raise DSpaceTraversalError(
+                    "Pagination metadata/next-link is missing from a full "
+                    f"page: {request_key}")
+            if (
+                expected_total_pages is not None
+                and len(seen_page_numbers) != expected_total_pages
+            ):
+                raise DSpaceTraversalError(
+                    "Pagination ended before every declared page was read: "
+                    f"read {len(seen_page_numbers)} of "
+                    f"{expected_total_pages}")
+            return results
+
     def iter_embedded(self, path_or_url, embedded_key, page_size=100):
         page = 0
         while True:
@@ -273,16 +432,14 @@ class DSpaceClient:
             item.get("_links", {}).get("bundles", {}).get("href")
             or f"/api/core/items/{item['uuid']}/bundles"
         )
-        payload = self.get_json(url, params={"size": 100})
-        return embedded_list(payload, "_embedded", "bundles")
+        return self.list_paginated_unique(url, "bundles")
 
     def list_bitstreams(self, bundle):
         url = (
             bundle.get("_links", {}).get("bitstreams", {}).get("href")
             or f"/api/core/bundles/{bundle['uuid']}/bitstreams"
         )
-        payload = self.get_json(url, params={"size": 100})
-        return embedded_list(payload, "_embedded", "bitstreams")
+        return self.list_paginated_unique(url, "bitstreams")
 
     def download(self, path_or_url, destination):
         os.makedirs(os.path.dirname(destination), exist_ok=True)
@@ -451,6 +608,9 @@ def sync_dspace(
         "checksum_failures": 0,
         "unsupported_files": 0,
         "limited_files": 0,
+        "enumeration_complete": True,
+        "enumeration_failures": [],
+        "cleanup_status": "pending",
         "errors": [],
         "faculties": {},
         "collections": {},
@@ -517,9 +677,11 @@ def sync_dspace(
 
             try:
                 bundles = client.list_bundles(item)
-            except requests.RequestException as exc:
-                report["errors"].append(
-                    f"item {item_uuid} bundles: {exc}")
+            except (requests.RequestException, DSpaceTraversalError) as exc:
+                message = f"item {item_uuid} bundles: {exc}"
+                report["enumeration_complete"] = False
+                report["enumeration_failures"].append(message)
+                report["errors"].append(message)
                 continue
 
             for bundle in bundles:
@@ -527,9 +689,14 @@ def sync_dspace(
                     continue
                 try:
                     bitstreams = client.list_bitstreams(bundle)
-                except requests.RequestException as exc:
-                    report["errors"].append(
+                except (
+                    requests.RequestException, DSpaceTraversalError
+                ) as exc:
+                    message = (
                         f"bundle {bundle.get('uuid')} bitstreams: {exc}")
+                    report["enumeration_complete"] = False
+                    report["enumeration_failures"].append(message)
+                    report["errors"].append(message)
                     continue
 
                 for bitstream in bitstreams:
@@ -683,7 +850,13 @@ def sync_dspace(
                             f"bitstream {bitstream_uuid}: {exc}")
 
     full_sync = max_downloads is None and max_per_collection is None
-    if full_sync and not dry_run and not report["errors"]:
+    cleanup_allowed = (
+        full_sync
+        and not dry_run
+        and report["enumeration_complete"]
+        and not report["errors"]
+    )
+    if cleanup_allowed:
         current_scope_uuids = {
             scope.get("uuid") for scope in scopes if scope.get("uuid")
         }
@@ -701,12 +874,26 @@ def sync_dspace(
             previous = manifest["bitstreams"].pop(bitstream_uuid)
             if remove_managed_paths(output_dir, previous.get("path")):
                 report["removed_stale"] += 1
+        report["cleanup_status"] = "completed"
+    elif dry_run:
+        report["cleanup_status"] = "not_run_dry_run"
+    elif not full_sync:
+        report["cleanup_status"] = "not_run_limited_sync"
+    elif not report["enumeration_complete"]:
+        report["cleanup_status"] = "blocked_incomplete_enumeration"
+    else:
+        report["cleanup_status"] = "blocked_errors"
 
     report["unique_items_seen"] = len(unique_item_uuids)
     report["unique_item_uuids"] = sorted(unique_item_uuids)
     report["finished_at_unix"] = time.time()
     if not dry_run:
         manifest["last_sync_unix"] = report["finished_at_unix"]
+        manifest["last_sync_status"] = (
+            "success" if not report["errors"] else "failed")
+        manifest["last_enumeration_complete"] = report[
+            "enumeration_complete"]
+        manifest["last_cleanup_status"] = report["cleanup_status"]
         write_json_if_changed(manifest_path, manifest)
         write_json_file(
             os.path.join(output_dir, "dspace_sync_report.json"), report)

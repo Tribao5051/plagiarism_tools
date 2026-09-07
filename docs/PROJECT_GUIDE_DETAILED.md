@@ -205,7 +205,29 @@ Hash cấu hình hiện tại:
 20fa24fde89ccc8662c20172ebf6979df0f3123e43d04eab117edc537d73aef7
 ```
 
-**Commit:** commit Task 7 có message `fix: validate vector index configuration`.
+**Commit:** `f76f23b`.
+
+### Task 8 - Đọc hết pagination DSpace trước cleanup
+
+**Trước khi sửa:** `list_bundles` và `list_bitstreams` chỉ request một trang với
+`size=100`. Nếu bundle có hơn 100 bitstream, các UUID từ trang sau không được
+đưa vào `seen_bitstreams`; full sync vì vậy có thể nhận nhầm file local còn hợp
+lệ là stale và xóa nó.
+
+**Sau khi sửa:** hai hàm dùng chung một bộ duyệt pagination, theo cả
+`page.totalPages` và HAL `_links.next`. Kết quả được khử trùng theo UUID nhưng
+giữ thứ tự xuất hiện đầu tiên. Duyệt sẽ thất bại nếu gặp page number, nội dung
+trang, request hoặc next-link lặp; total page thay đổi; trang kết thúc sớm; phần
+tử không có UUID; hoặc trang đầy nhưng không có metadata để chứng minh đã hết.
+
+Lỗi request ở bất kỳ trang bundle/bitstream nào đặt
+`enumeration_complete=false`, ghi chi tiết vào `enumeration_failures` và
+`errors`, đồng thời đặt `cleanup_status=blocked_incomplete_enumeration`. Stale
+cleanup chỉ chạy khi đây là full sync, không phải dry-run, toàn bộ enumeration
+hoàn tất và không có lỗi. Manifest lưu trạng thái lần sync cuối để lần chạy sau
+có thể kiểm tra nguyên nhân; phạm vi community/collection không thay đổi.
+
+**Commit:** commit Task 8 có message `fix: complete dspace pagination before cleanup`.
 
 ## 6. Cách chạy sau khi sắp xếp
 
@@ -271,6 +293,10 @@ chunk/max-length/revision/tokenizer/extraction thay đổi, batch/workers/cache 
 không đổi hash, index cũ/mismatch không bị xóa, hash hợp lệ được reuse, và hai
 đường tạo vector phụ cũng không bỏ qua kiểm tra.
 
+Sau Task 8, toàn bộ 69 test đạt. Năm regression test mới kiểm tra đủ 101
+bitstream qua hai trang, UUID lặp không nhân đôi, bundle pagination đọc hết,
+page/next-link lặp bị chặn và lỗi trang thứ hai không xóa file local.
+
 ## 9. Giới hạn còn lại
 
 - Chưa có raw-text offset mapping nên chưa có character precision đáng tin cậy.
@@ -288,4 +314,5 @@ không đổi hash, index cũ/mismatch không bị xóa, hash hợp lệ đượ
 - `2af12c3`: Task 5.
 - `f895a26`: Task 6.
 - `2047859`: tổ chức lại runtime/tests/performance/docs/test_data.
-- Task 7: commit có message `fix: validate vector index configuration`.
+- `f76f23b`: Task 7.
+- Task 8: commit có message `fix: complete dspace pagination before cleanup`.

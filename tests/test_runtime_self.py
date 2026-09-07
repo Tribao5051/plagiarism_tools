@@ -721,6 +721,225 @@ class RuntimeSelfTests(unittest.TestCase):
         self.assertEqual(scopes[0]["faculty"], "computer-science")
         self.assertEqual(scopes[0]["community_path"], "Year 2022")
 
+    def test_dspace_bitstreams_read_all_pages_and_deduplicate_uuid(self):
+        client = DSpaceClient("https://example.invalid/server")
+        first_page = [
+            {"uuid": f"bitstream-{index}", "name": f"{index}.pdf"}
+            for index in range(100)
+        ]
+        second_page = [
+            {"uuid": "bitstream-99", "name": "duplicate.pdf"},
+            {"uuid": "bitstream-100", "name": "100.pdf"},
+        ]
+
+        def fake_get_json(_url, params=None):
+            page = int((params or {}).get("page", 0))
+            entries = first_page if page == 0 else second_page
+            return {
+                "_embedded": {"bitstreams": entries},
+                "page": {
+                    "number": page,
+                    "size": 100,
+                    "totalPages": 2,
+                    "totalElements": 102,
+                },
+            }
+
+        with patch.object(client, "get_json", side_effect=fake_get_json):
+            bitstreams = client.list_bitstreams({
+                "uuid": "bundle-1",
+                "_links": {
+                    "bitstreams": {
+                        "href": "https://example.invalid/bitstreams"
+                    }
+                },
+            })
+
+        self.assertEqual(len(bitstreams), 101)
+        self.assertEqual(
+            len({entry["uuid"] for entry in bitstreams}), 101)
+        self.assertEqual(bitstreams[-1]["uuid"], "bitstream-100")
+
+    def test_dspace_bundles_read_all_declared_pages(self):
+        client = DSpaceClient("https://example.invalid/server")
+        first_page = [
+            {"uuid": f"bundle-{index}", "name": "ORIGINAL"}
+            for index in range(100)
+        ]
+
+        def fake_get_json(_url, params=None):
+            page = int((params or {}).get("page", 0))
+            return {
+                "_embedded": {
+                    "bundles": first_page if page == 0 else [{
+                        "uuid": "bundle-100",
+                        "name": "ORIGINAL",
+                    }]
+                },
+                "page": {
+                    "number": page,
+                    "size": 100,
+                    "totalPages": 2,
+                    "totalElements": 101,
+                },
+            }
+
+        with patch.object(client, "get_json", side_effect=fake_get_json):
+            bundles = client.list_bundles({"uuid": "item-1"})
+
+        self.assertEqual(len(bundles), 101)
+        self.assertEqual(bundles[-1]["uuid"], "bundle-100")
+
+    def test_dspace_bundles_reject_repeated_next_link(self):
+        client = DSpaceClient("https://example.invalid/server")
+        repeated_url = "https://example.invalid/bundles?page=0&size=100"
+        payload = {
+            "_embedded": {
+                "bundles": [{"uuid": "bundle-1", "name": "ORIGINAL"}]
+            },
+            "_links": {"next": {"href": repeated_url}},
+            "page": {
+                "number": 0,
+                "size": 100,
+                "totalPages": 2,
+                "totalElements": 2,
+            },
+        }
+
+        with patch.object(client, "get_json", return_value=payload):
+            with self.assertRaisesRegex(RuntimeError, "repeated"):
+                client.list_bundles({
+                    "uuid": "item-1",
+                    "_links": {"bundles": {"href": repeated_url}},
+                })
+
+    def test_dspace_bitstreams_reject_repeated_page_number(self):
+        client = DSpaceClient("https://example.invalid/server")
+
+        def fake_get_json(_url, params=None):
+            requested_page = int((params or {}).get("page", 0))
+            return {
+                "_embedded": {
+                    "bitstreams": [{
+                        "uuid": f"bitstream-page-{requested_page}",
+                        "name": "document.pdf",
+                    }]
+                },
+                "page": {
+                    "number": 0,
+                    "size": 100,
+                    "totalPages": 2,
+                    "totalElements": 2,
+                },
+            }
+
+        with patch.object(client, "get_json", side_effect=fake_get_json):
+            with self.assertRaisesRegex(RuntimeError, "repeated page"):
+                client.list_bitstreams({"uuid": "bundle-1"})
+
+    def test_dspace_second_bitstream_page_failure_blocks_cleanup(self):
+        class FailingSecondPageClient(DSpaceClient):
+            def __init__(self, *args, **kwargs):
+                self.base_url = "https://example.invalid/server/"
+
+            def login(self, username, password):
+                pass
+
+            def iter_discovery_items(self, scope=None, page_size=100):
+                yield {"uuid": "item-current"}
+
+            def get_item(self, item_uuid):
+                return {
+                    "uuid": item_uuid,
+                    "metadata": {
+                        "dc.title": [{"value": "Current item"}]
+                    },
+                }
+
+            def list_bundles(self, item):
+                return [{"uuid": "bundle-current", "name": "ORIGINAL"}]
+
+            def get_json(self, _url, params=None):
+                page = int((params or {}).get("page", 0))
+                if page == 1:
+                    raise dspace_sync.requests.ConnectionError(
+                        "second page unavailable")
+                return {
+                    "_embedded": {
+                        "bitstreams": [{
+                            "uuid": "bitstream-current",
+                            "name": "unsupported.bin",
+                        }]
+                    },
+                    "page": {
+                        "number": 0,
+                        "size": 100,
+                        "totalPages": 2,
+                        "totalElements": 2,
+                    },
+                }
+
+        with tempfile.TemporaryDirectory() as root:
+            output = os.path.join(root, "corpus")
+            old_relative = "computer-science/old-item/old.pdf"
+            old_path = os.path.join(output, *old_relative.split("/"))
+            os.makedirs(os.path.dirname(old_path), exist_ok=True)
+            with open(old_path, "wb") as handle:
+                handle.write(b"must remain")
+            with open(
+                os.path.join(output, "dspace_sync_manifest.json"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump({
+                    "bitstreams": {
+                        "bitstream-old": {
+                            "path": old_relative,
+                            "collection_uuid": "collection-1",
+                        }
+                    }
+                }, handle)
+            config_path = os.path.join(root, "dspace.json")
+            with open(config_path, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "base_url": "https://example.invalid/server",
+                    "output_dir": output,
+                    "scopes": [{
+                        "uuid": "collection-1",
+                        "faculty": "computer-science",
+                        "collection_name": "Computer Science",
+                    }],
+                    "allowed_extensions": [".pdf"],
+                }, handle)
+
+            with patch.object(
+                dspace_sync, "DSpaceClient", FailingSecondPageClient
+            ):
+                report = dspace_sync.sync_dspace(config_path)
+
+            self.assertFalse(report["enumeration_complete"])
+            self.assertEqual(
+                report["cleanup_status"], "blocked_incomplete_enumeration")
+            self.assertEqual(report["removed_stale"], 0)
+            self.assertTrue(os.path.isfile(old_path))
+            self.assertTrue(any(
+                "second page unavailable" in error
+                for error in report["errors"]
+            ))
+            with open(
+                os.path.join(output, "dspace_sync_manifest.json"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                manifest = json.load(handle)
+            self.assertIn("bitstream-old", manifest["bitstreams"])
+            self.assertEqual(manifest["last_sync_status"], "failed")
+            self.assertFalse(manifest["last_enumeration_complete"])
+            self.assertEqual(
+                manifest["last_cleanup_status"],
+                "blocked_incomplete_enumeration",
+            )
+
     def test_dspace_hash_and_collection_metadata(self):
         with tempfile.TemporaryDirectory() as root:
             path = os.path.join(root, "document.pdf")
