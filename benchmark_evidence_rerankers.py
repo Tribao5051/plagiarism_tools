@@ -41,6 +41,12 @@ from evidence_reranker import (
 
 RUNTIME_ROOT = pathlib.Path(__file__).resolve().parent
 DEFAULT_SPLIT = RUNTIME_ROOT / "reranker_experiment_split.json"
+LABEL_SCHEMA_VERSION = "student_and_source_text_v2"
+CHARACTER_PRECISION_NOTE = (
+    "Not computed: PAN XML offsets refer to original raw text, so character "
+    "precision requires an explicit mapping from normalized tool text back "
+    "to the original submission and source text."
+)
 
 
 def parse_args():
@@ -69,6 +75,31 @@ def parse_args():
     return parser.parse_args()
 
 
+def validate_experiment_split(split):
+    required = ("train", "validation", "test")
+    missing = [name for name in required if name not in split]
+    if missing:
+        raise ValueError(
+            "Missing split partition(s): " + ", ".join(missing))
+
+    partitions = {name: list(split[name]) for name in required}
+    for name, values in partitions.items():
+        if len(values) != len(set(values)):
+            raise ValueError(f"Duplicate documents in {name} split")
+
+    for left_index, left_name in enumerate(required):
+        for right_name in required[left_index + 1:]:
+            overlap = sorted(
+                set(partitions[left_name]) & set(partitions[right_name])
+            )
+            if overlap:
+                raise ValueError(
+                    f"Split partitions overlap: {left_name} and "
+                    f"{right_name}: {', '.join(overlap)}"
+                )
+    return partitions
+
+
 def import_evaluator(evaluator_root):
     evaluator_root = os.path.abspath(evaluator_root)
     if evaluator_root not in sys.path:
@@ -78,7 +109,6 @@ def import_evaluator(evaluator_root):
         containment_from_profiles,
         flatten_predictions,
         parse_ground_truth,
-        prediction_metrics,
         text_profile,
         token_containment,
     )
@@ -87,7 +117,6 @@ def import_evaluator(evaluator_root):
         "containment": containment_from_profiles,
         "flatten": flatten_predictions,
         "parse_truth": parse_ground_truth,
-        "prediction_metrics": prediction_metrics,
         "text_profile": text_profile,
         "token_containment": token_containment,
     }
@@ -173,7 +202,10 @@ def annotate_truth_matches(records, truths, evaluator):
                     evaluator["token_containment"](
                         source_text, truth["source_text"]),
                 )
-            if student_score >= evaluator["threshold"]:
+            if (
+                student_score >= evaluator["threshold"]
+                and source_score >= evaluator["threshold"]
+            ):
                 matches[truth_index] = (
                     0.7 * student_score + 0.3 * source_score)
         record["truth_scores"] = matches
@@ -362,6 +394,71 @@ def model_score_by_case(model, cases, names, include_cross=False):
     return output
 
 
+def precision_metric_fields(evidence_hit_precision):
+    return {
+        "precision": evidence_hit_precision,
+        "evidence_hit_precision": evidence_hit_precision,
+        "character_precision": None,
+        "character_precision_note": CHARACTER_PRECISION_NOTE,
+    }
+
+
+def evidence_hit_metrics_from_predictions(
+        truths, predictions, evaluator, allow_prediction_reuse=True):
+    records = [
+        {
+            "record_id": prediction.get(
+                "prediction_id", f"prediction-{index}"),
+            "source_file": prediction.get("source_file", ""),
+            "evidence": prediction,
+        }
+        for index, prediction in enumerate(predictions)
+    ]
+    annotate_truth_matches(records, truths, evaluator)
+
+    candidate_pairs = sorted(
+        (
+            match_score,
+            truth_index,
+            record["record_id"],
+        )
+        for record in records
+        for truth_index, match_score in record["truth_scores"].items()
+    )
+    assigned_truths = set()
+    hit_records = set()
+    for _score, truth_index, record_id in reversed(candidate_pairs):
+        if truth_index in assigned_truths:
+            continue
+        if not allow_prediction_reuse and record_id in hit_records:
+            continue
+        assigned_truths.add(truth_index)
+        hit_records.add(record_id)
+
+    evidence_count = len(predictions)
+    truth_count = len(truths)
+    evidence_hit_precision = (
+        len(hit_records) / evidence_count
+        if evidence_count else (1.0 if not truth_count else 0.0)
+    )
+    recall = len(assigned_truths) / truth_count if truth_count else 1.0
+    return {
+        "truth_segments": truth_count,
+        "caught_truth_segments": len(assigned_truths),
+        "evidence_count": evidence_count,
+        "evidence_true_positive": len(hit_records),
+        "evidence_false_positive": max(
+            0, evidence_count - len(hit_records)),
+        **precision_metric_fields(evidence_hit_precision),
+        "recall": recall,
+        "f1": (
+            2 * evidence_hit_precision * recall
+            / (evidence_hit_precision + recall)
+            if evidence_hit_precision + recall else 0.0
+        ),
+    }
+
+
 def fast_metrics(cases, names, scores_by_case, selection):
     truth_count = 0
     caught_count = 0
@@ -402,7 +499,7 @@ def fast_metrics(cases, names, scores_by_case, selection):
             "caught_truth_segments": file_caught,
             "evidence_count": file_evidence,
             "evidence_true_positive": file_hits,
-            "precision": file_precision,
+            **precision_metric_fields(file_precision),
             "recall": file_recall,
         })
     precision = evidence_hits / evidence_count if evidence_count else 0.0
@@ -412,7 +509,7 @@ def fast_metrics(cases, names, scores_by_case, selection):
         "caught_truth_segments": caught_count,
         "evidence_count": evidence_count,
         "evidence_true_positive": evidence_hits,
-        "precision": precision,
+        **precision_metric_fields(precision),
         "recall": recall,
         "f1": (
             2 * precision * recall / (precision + recall)
@@ -460,7 +557,7 @@ def tune_selection(
                     if metrics["recall"] < high_min_recall:
                         continue
                     key = (
-                        metrics["precision"],
+                        metrics["evidence_hit_precision"],
                         metrics["f1"],
                         metrics["recall"],
                         -metrics["evidence_count"],
@@ -468,7 +565,7 @@ def tune_selection(
                 else:
                     key = (
                         metrics["f1"],
-                        metrics["precision"],
+                        metrics["evidence_hit_precision"],
                         metrics["recall"],
                         -metrics["evidence_count"],
                     )
@@ -487,8 +584,12 @@ def baseline_metrics(cases, names, profile, evaluator):
         data = copy.deepcopy(cases[name]["api_result"])
         selection = select_display_evidence(data.get("results", ()), profile)
         predictions, _sources = evaluator["flatten"](data)
-        metrics = evaluator["prediction_metrics"](
-            cases[name]["truths"], predictions, allow_prediction_reuse=True)
+        metrics = evidence_hit_metrics_from_predictions(
+            cases[name]["truths"],
+            predictions,
+            evaluator,
+            allow_prediction_reuse=True,
+        )
         for key in (
             "truth_segments", "caught_truth_segments",
             "evidence_count", "evidence_true_positive",
@@ -497,7 +598,7 @@ def baseline_metrics(cases, names, profile, evaluator):
         per_file.append({
             "file": name,
             "evidence_count": selection["shown_count"],
-            "precision": metrics["precision"],
+            **precision_metric_fields(metrics["evidence_hit_precision"]),
             "recall": metrics["recall"],
             "f1": metrics["f1"],
         })
@@ -509,7 +610,7 @@ def baseline_metrics(cases, names, profile, evaluator):
         if totals["truth_segments"] else 1.0)
     return {
         **dict(totals),
-        "precision": precision,
+        **precision_metric_fields(precision),
         "recall": recall,
         "f1": (
             2 * precision * recall / (precision + recall)
@@ -685,10 +786,19 @@ def write_report(payload, output_path):
         "The train and validation documents form a development set. Model "
         "scores below are out-of-fold on that development set.",
         "",
+        "## Metric definitions",
+        "",
+        "- Evidence-hit precision: correctly matched evidence passages divided "
+        "by all selected evidence passages.",
+        "- Character precision: not computed. It requires mapping normalized "
+        "tool offsets back to the original raw PAN submission and source text.",
+        "- `precision` in JSON is retained only as a compatibility alias for "
+        "`evidence_hit_precision`.",
+        "",
         "## Balanced operating point",
         "",
-        "| Strategy | Dev-CV P | Dev-CV R | Dev-CV F1 | Test P | Test R | "
-        "Test F1 | Test evidence |",
+        "| Strategy | Dev-CV evidence-hit P | Dev-CV R | Dev-CV F1 | "
+        "Test evidence-hit P | Test R | Test F1 | Test evidence |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows = []
@@ -698,29 +808,33 @@ def write_report(payload, output_path):
         rows.append((val["f1"], name, val, test))
     for _score, name, val, test in sorted(rows, reverse=True):
         lines.append(
-            f"| {name} | {percent(val['precision'])} | "
+            f"| {name} | {percent(val['evidence_hit_precision'])} | "
             f"{percent(val['recall'])} | {percent(val['f1'])} | "
-            f"{percent(test['precision'])} | {percent(test['recall'])} | "
+            f"{percent(test['evidence_hit_precision'])} | "
+            f"{percent(test['recall'])} | "
             f"{percent(test['f1'])} | {test['evidence_count']} |")
 
     lines.extend([
         "",
-        "## High-precision operating point",
+        "## High evidence-hit precision operating point",
         "",
-        "| Strategy | Dev-CV P | Dev-CV R | Dev-CV F1 | Test P | Test R | "
-        "Test F1 | Test evidence |",
+        "| Strategy | Dev-CV evidence-hit P | Dev-CV R | Dev-CV F1 | "
+        "Test evidence-hit P | Test R | Test F1 | Test evidence |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ])
     rows = []
     for name, result in payload["strategies"].items():
         val = result["high_precision"]["development_cv"]
         test = result["high_precision"]["test"]
-        rows.append((val["precision"], val["f1"], name, val, test))
+        rows.append((
+            val["evidence_hit_precision"], val["f1"], name, val, test
+        ))
     for _precision, _f1, name, val, test in sorted(rows, reverse=True):
         lines.append(
-            f"| {name} | {percent(val['precision'])} | "
+            f"| {name} | {percent(val['evidence_hit_precision'])} | "
             f"{percent(val['recall'])} | {percent(val['f1'])} | "
-            f"{percent(test['precision'])} | {percent(test['recall'])} | "
+            f"{percent(test['evidence_hit_precision'])} | "
+            f"{percent(test['recall'])} | "
             f"{percent(test['f1'])} | {test['evidence_count']} |")
 
     recommendation = payload["recommendation"]
@@ -731,8 +845,8 @@ def write_report(payload, output_path):
         f"Selected by development cross-validation F1: `{recommendation['strategy']}`.",
         f"Development cross-validation F1: "
         f"{percent(recommendation['development_cv']['f1'])}.",
-        f"Held-out test precision: "
-        f"{percent(recommendation['test']['precision'])}.",
+        f"Held-out test evidence-hit precision: "
+        f"{percent(recommendation['test']['evidence_hit_precision'])}.",
         f"Held-out test recall: {percent(recommendation['test']['recall'])}.",
         f"Held-out test F1: {percent(recommendation['test']['f1'])}.",
         "",
@@ -752,8 +866,8 @@ def main():
         "TRANSFORMERS_CACHE", str(RUNTIME_ROOT / "project_cache"))
     os.environ.setdefault("MPLCONFIGDIR", str(RUNTIME_ROOT / "mpl_temp"))
 
-    split = json.loads(pathlib.Path(
-        args.split_file).read_text(encoding="utf-8"))
+    split = validate_experiment_split(json.loads(pathlib.Path(
+        args.split_file).read_text(encoding="utf-8")))
     evaluator = import_evaluator(args.evaluator_root)
     raw_cases = load_raw_cases(args.raw_dir)
     cases = build_cases(
@@ -825,6 +939,7 @@ def main():
     payload = {
         "split": split,
         "dataset": {
+            "label_schema_version": LABEL_SCHEMA_VERSION,
             "candidate_count": sum(
                 len(cases[name]["records"]) for name in all_names),
             "positive_candidates": sum(
@@ -834,6 +949,17 @@ def main():
             "development_positive_candidates": int(
                 development_labels.sum()),
         },
+        "metric_definitions": {
+            "precision": "Compatibility alias for evidence_hit_precision",
+            "evidence_hit_precision": (
+                "Correctly matched selected evidence passages divided by "
+                "all selected evidence passages"
+            ),
+            "character_precision": None,
+            "character_precision_note": CHARACTER_PRECISION_NOTE,
+        },
+        "tuning_partitions": ["train", "validation"],
+        "held_out_partition": "test",
         "baseline": {
             profile: {
                 "development": baseline_metrics(
@@ -903,7 +1029,7 @@ def main():
             payload["strategies"][name]["balanced"][
                 "development_cv"]["f1"],
             payload["strategies"][name]["balanced"][
-                "development_cv"]["precision"],
+                "development_cv"]["evidence_hit_precision"],
         ),
     )
     recommended_result = payload["strategies"][recommended_name]["balanced"]
@@ -926,6 +1052,7 @@ def main():
         (output_dir / "recommended_reranker_metadata.json").write_text(
             json.dumps({
                 "strategy": recommended_name,
+                "label_schema_version": LABEL_SCHEMA_VERSION,
                 "feature_names": feature_names,
                 "selection": recommended_result["selection"],
                 "trained_documents": development_names,
