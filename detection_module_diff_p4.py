@@ -235,41 +235,54 @@ def _evidence_bucket(position):
     return int(position) // EVIDENCE_OVERLAP_WINDOW
 
 
+def _evidence_span_overlap(left, right, prefix):
+    left_start = left.get(f"{prefix}_start")
+    left_end = left.get(f"{prefix}_end")
+    right_start = right.get(f"{prefix}_start")
+    right_end = right.get(f"{prefix}_end")
+    if not all(isinstance(value, int) for value in (
+            left_start, left_end, right_start, right_end)):
+        return 0
+    return max(0, min(left_end, right_end) - max(left_start, right_start))
+
+
+def _evidence_sources_match(left, right, fallback_source):
+    left_source = left.get("source_file") or fallback_source
+    right_source = right.get("source_file") or fallback_source
+    return left_source == right_source
+
+
 def merge_evidence(verbatim_evidence, semantic_evidence, source_file):
     merged = []
     used_semantic = set()
-    semantic_buckets = defaultdict(list)
-    for idx, sem in enumerate(semantic_evidence):
-        bucket = _evidence_bucket(sem.get("student_start"))
-        if bucket is not None:
-            semantic_buckets[bucket].append(idx)
 
     for verb in verbatim_evidence:
         best_idx = None
         best_ratio = 0.0
-        verb_bucket = _evidence_bucket(verb.get("student_start"))
-        candidate_indices = []
-        if verb_bucket is not None:
-            for bucket in range(verb_bucket - 1, verb_bucket + 2):
-                candidate_indices.extend(semantic_buckets.get(bucket, ()))
+        best_key = None
 
-        for idx in candidate_indices:
+        for idx, sem in enumerate(semantic_evidence):
             if idx in used_semantic:
                 continue
-            sem = semantic_evidence[idx]
-            sem_start = sem.get("student_start")
-            verb_start = verb.get("student_start")
-            close_position = (
-                sem_start is not None and
-                verb_start is not None and
-                abs(sem_start - verb_start) <= EVIDENCE_OVERLAP_WINDOW
-            )
+            if not _evidence_sources_match(verb, sem, source_file):
+                continue
+            student_overlap = _evidence_span_overlap(
+                verb, sem, "student")
+            source_overlap = _evidence_span_overlap(verb, sem, "source")
+            if student_overlap <= 0 or source_overlap <= 0:
+                continue
             ratio = evidence_text_similarity(
                 verb.get("student_text"), sem.get("student_text"))
-            if close_position or ratio >= 0.55:
-                if ratio >= best_ratio:
-                    best_idx = idx
-                    best_ratio = ratio
+            candidate_key = (
+                student_overlap + source_overlap,
+                ratio,
+                float(sem.get("score") or 0.0),
+                -idx,
+            )
+            if best_key is None or candidate_key > best_key:
+                best_idx = idx
+                best_ratio = ratio
+                best_key = candidate_key
 
         if best_idx is not None:
             sem = semantic_evidence[best_idx]
@@ -277,17 +290,20 @@ def merge_evidence(verbatim_evidence, semantic_evidence, source_file):
             merged.append({
                 "type": "verbatim_semantic",
                 "label": "Exact copy also semantically matched",
-                "source_file": source_file,
+                "source_file": verb.get("source_file") or source_file,
                 "student_start": verb.get("student_start"),
                 "student_end": verb.get("student_end"),
-                "source_start": verb.get("source_start") if verb.get("source_start") is not None else sem.get("source_start"),
-                "source_end": verb.get("source_end") if verb.get("source_end") is not None else sem.get("source_end"),
+                "source_start": verb.get("source_start"),
+                "source_end": verb.get("source_end"),
                 "source_chunk_index": sem.get("source_chunk_index"),
-                "student_text": verb.get("student_text"),
+                "student_text": verb.get("student_text") or sem.get("student_text"),
                 "source_text": verb.get("source_text") or sem.get("source_text"),
                 "verbatim_text": verb.get("match_text"),
-                "student_match_text": sem.get("student") or verb.get("match_text"),
-                "source_match_text": sem.get("source") or verb.get("match_text"),
+                "student_match_text": (
+                    verb.get("student_match_text")
+                    or verb.get("match_text")
+                ),
+                "source_match_text": verb.get("source_match_text"),
                 "semantic_score": sem.get("score"),
                 "lexical_score": sem.get("lexical_score"),
                 "match_method": sem.get("match_method", "dense_embedding"),
@@ -297,7 +313,7 @@ def merge_evidence(verbatim_evidence, semantic_evidence, source_file):
             merged.append({
                 "type": "verbatim",
                 "label": "Exact copied text",
-                "source_file": source_file,
+                "source_file": verb.get("source_file") or source_file,
                 "student_start": verb.get("student_start"),
                 "student_end": verb.get("student_end"),
                 "source_start": verb.get("source_start"),
@@ -305,8 +321,11 @@ def merge_evidence(verbatim_evidence, semantic_evidence, source_file):
                 "student_text": verb.get("student_text"),
                 "source_text": verb.get("source_text"),
                 "verbatim_text": verb.get("match_text"),
-                "student_match_text": verb.get("match_text"),
-                "source_match_text": verb.get("match_text"),
+                "student_match_text": (
+                    verb.get("student_match_text")
+                    or verb.get("match_text")
+                ),
+                "source_match_text": verb.get("source_match_text"),
             })
 
     for idx, sem in enumerate(semantic_evidence):
@@ -315,7 +334,7 @@ def merge_evidence(verbatim_evidence, semantic_evidence, source_file):
         merged.append({
             "type": "semantic",
             "label": "Semantic similarity / possible paraphrase",
-            "source_file": source_file,
+            "source_file": sem.get("source_file") or source_file,
             "student_start": sem.get("student_start"),
             "student_end": sem.get("student_end"),
             "source_start": sem.get("source_start"),
@@ -1806,12 +1825,17 @@ def perform_plagiarism_scan(test_content, ml_state):
                     "student_text": student_context,
                     "source_text": expand_to_readable_context(
                         source_raw, source_start, source_end),
+                    "source_file": s,
                     "student_start": student_start,
                     "student_end": student_end,
                     "source_start": source_start,
                     "source_end": source_end,
                     "match_text": test_content[
                         student_start:student_end],
+                    "student_match_text": test_content[
+                        student_start:student_end],
+                    "source_match_text": source_raw[
+                        source_start:source_end],
                     "type": "verbatim",
                     "label": "Exact copied text",
                     "match_type": "Chính xác tuyệt đối"

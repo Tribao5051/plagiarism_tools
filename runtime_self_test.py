@@ -267,6 +267,139 @@ class RuntimeSelfTests(unittest.TestCase):
         self.assertEqual(anchors, [])
         self.assertEqual(matched_positions, set())
 
+    @staticmethod
+    def merge_test_verbatim(**overrides):
+        evidence = {
+            "source_file": "paper.pdf",
+            "student_start": 100,
+            "student_end": 150,
+            "source_start": 100,
+            "source_end": 150,
+            "student_text": "Student context around copied material.",
+            "source_text": "Source context around copied material.",
+            "match_text": "copied material",
+            "student_match_text": "copied material",
+            "source_match_text": "copied material",
+        }
+        evidence.update(overrides)
+        return evidence
+
+    @staticmethod
+    def merge_test_semantic(**overrides):
+        evidence = {
+            "source_file": "paper.pdf",
+            "student_start": 90,
+            "student_end": 170,
+            "source_start": 90,
+            "source_end": 170,
+            "student_text": "Student context around copied material.",
+            "source_text": "Source context around copied material.",
+            "student": "semantic student span",
+            "source": "semantic source span",
+            "score": 0.91,
+            "source_chunk_index": 2,
+        }
+        evidence.update(overrides)
+        return evidence
+
+    def test_merge_evidence_keeps_distant_source_spans_separate(self):
+        verbatim = self.merge_test_verbatim(
+            source_start=100,
+            source_end=150,
+        )
+        semantic = self.merge_test_semantic(
+            student_start=100,
+            student_end=150,
+            source_start=9000,
+            source_end=9050,
+        )
+
+        merged = detection_module.merge_evidence(
+            [verbatim], [semantic], "paper.pdf")
+
+        self.assertEqual(
+            [item["type"] for item in merged],
+            ["verbatim", "semantic"],
+        )
+
+    def test_merge_evidence_combines_spans_overlapping_in_both_documents(self):
+        verbatim = self.merge_test_verbatim(
+            student_start=110,
+            student_end=150,
+            source_start=120,
+            source_end=160,
+        )
+        semantic = self.merge_test_semantic(
+            student_start=90,
+            student_end=170,
+            source_start=100,
+            source_end=180,
+        )
+
+        merged = detection_module.merge_evidence(
+            [verbatim], [semantic], "paper.pdf")
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["type"], "verbatim_semantic")
+
+    def test_merge_evidence_keeps_different_sources_separate(self):
+        verbatim = self.merge_test_verbatim(source_file="paper-a.pdf")
+        semantic = self.merge_test_semantic(source_file="paper-b.pdf")
+
+        merged = detection_module.merge_evidence(
+            [verbatim], [semantic], "paper-a.pdf")
+
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(
+            {item["source_file"] for item in merged},
+            {"paper-a.pdf", "paper-b.pdf"},
+        )
+
+    def test_merged_match_text_matches_its_reported_offsets(self):
+        student_document = "prefix STUDENT EXACT SLICE suffix"
+        source_document = "header SOURCE EXACT SLICE footer"
+        student_start = student_document.index("STUDENT")
+        student_end = student_document.index(" suffix")
+        source_start = source_document.index("SOURCE")
+        source_end = source_document.index(" footer")
+        verbatim = self.merge_test_verbatim(
+            student_start=student_start,
+            student_end=student_end,
+            source_start=source_start,
+            source_end=source_end,
+            match_text=student_document[student_start:student_end],
+            student_match_text=student_document[student_start:student_end],
+            source_match_text=source_document[source_start:source_end],
+        )
+        semantic = self.merge_test_semantic(
+            student_start=max(0, student_start - 2),
+            student_end=min(len(student_document), student_end + 2),
+            source_start=max(0, source_start - 2),
+            source_end=min(len(source_document), source_end + 2),
+            student=student_document[
+                max(0, student_start - 2):min(
+                    len(student_document), student_end + 2)
+            ],
+            source=source_document[
+                max(0, source_start - 2):min(
+                    len(source_document), source_end + 2)
+            ],
+        )
+
+        merged = detection_module.merge_evidence(
+            [verbatim], [semantic], "paper.pdf")[0]
+
+        self.assertEqual(
+            merged["student_match_text"],
+            student_document[
+                merged["student_start"]:merged["student_end"]
+            ],
+        )
+        self.assertEqual(
+            merged["source_match_text"],
+            source_document[merged["source_start"]:merged["source_end"]],
+        )
+
     def test_selected_config_is_semantic_batch_32(self):
         config = load_project_config()
         profile = get_chunking_profile(config=config)
