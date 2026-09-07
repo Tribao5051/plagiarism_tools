@@ -4,10 +4,13 @@ import os
 
 from project_config import (
     PROJECT_ROOT,
+    build_index_config_hash,
     faculty_index_paths,
     get_chunking_profile,
+    index_config_payload,
     load_project_config,
     resolve_project_path,
+    validate_index_config_hash,
 )
 
 
@@ -27,6 +30,7 @@ os.environ["ANONYMIZED_TELEMETRY"] = "False"
 import chromadb
 import torch
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError
 from FlagEmbedding import BGEM3FlagModel
 
 from chunking_config import (
@@ -46,7 +50,24 @@ from corpus_metadata import (
     write_json_file,
     write_normalized_document,
 )
-from pdf_extract import extract_university_content
+from pdf_extract import EXTRACTION_VERSION, extract_university_content
+
+
+CONFIG_EXTRACTION_VERSION = str(
+    INDEXING_CONFIG.get("extraction_version") or EXTRACTION_VERSION)
+if CONFIG_EXTRACTION_VERSION != EXTRACTION_VERSION:
+    raise RuntimeError(
+        "Configured extraction_version does not match pdf_extract: "
+        f"{CONFIG_EXTRACTION_VERSION} != {EXTRACTION_VERSION}"
+    )
+INDEX_CONFIG_HASH = build_index_config_hash(
+    CONFIG,
+    extraction_version=EXTRACTION_VERSION,
+)
+INDEX_CONFIG_PAYLOAD = index_config_payload(
+    CONFIG,
+    extraction_version=EXTRACTION_VERSION,
+)
 
 
 def find_spans(content, chunks):
@@ -137,6 +158,7 @@ def chunk_metadata(source, spans, content_hash, file_hash, metadata_hash,
             "file_sha256": file_hash,
             "source_metadata_sha256": metadata_hash,
             "index_version": CHUNK_CONFIG["index_version"],
+            "index_config_hash": INDEX_CONFIG_HASH,
             "model": MODEL_CONFIG["name"],
             "chunking_strategy": CHUNK_CONFIG["strategy"],
             "chunk_size": CHUNK_CONFIG["chunk_size"],
@@ -198,37 +220,88 @@ def add_document(collection, model, corpus_directory, normalized_directory,
 
 
 def create_model():
-    model = BGEM3FlagModel(
-        MODEL_CONFIG["name"],
-        cache_dir=MODEL_CACHE,
-        use_fp16=(
+    model_options = {
+        "cache_dir": MODEL_CACHE,
+        "use_fp16": (
             torch.cuda.is_available()
             and bool(MODEL_CONFIG["use_fp16_on_cuda"])
         ),
-    )
+    }
+    if MODEL_CONFIG.get("revision"):
+        model_options["revision"] = MODEL_CONFIG["revision"]
+    model = BGEM3FlagModel(MODEL_CONFIG["name"], **model_options)
     if torch.cuda.is_available():
         model.model.to("cuda")
     model.model.eval()
     return model
 
 
-def create_collection(database_path, faculty):
+def collection_index_metadata(faculty):
+    return {
+        "index_version": CHUNK_CONFIG["index_version"],
+        "index_config_hash": INDEX_CONFIG_HASH,
+        "model": MODEL_CONFIG["name"],
+        "model_revision": str(MODEL_CONFIG.get("revision") or "default"),
+        "chunking_strategy": CHUNK_CONFIG["strategy"],
+        "chunk_size": CHUNK_CONFIG["chunk_size"],
+        "chunk_size_unit": CHUNK_CONFIG["chunk_size_unit"],
+        "chunk_overlap": CHUNK_CONFIG["chunk_overlap"],
+        "encode_max_length": int(MODEL_CONFIG["encode_max_length"]),
+        "extraction_version": EXTRACTION_VERSION,
+        "faculty": faculty,
+    }
+
+
+def validate_reusable_collection(collection, marker_path, expected_faculty):
+    metadata = collection.metadata or {}
+    stored_version = metadata.get("index_version")
+    if stored_version and stored_version != CHUNK_CONFIG["index_version"]:
+        raise RuntimeError(
+            "Index version mismatch: expected "
+            f"{CHUNK_CONFIG['index_version']}, found {stored_version}. "
+            "Existing index data was not modified."
+        )
+    validate_index_config_hash(
+        metadata.get("index_config_hash"),
+        INDEX_CONFIG_HASH,
+        location="Chroma collection",
+    )
+    if marker_path and (
+        os.path.isfile(marker_path) or collection.count() > 0
+    ):
+        marker = load_json_file(marker_path, default={})
+        validate_index_config_hash(
+            marker.get("index_config_hash"),
+            INDEX_CONFIG_HASH,
+            location=f"Index marker {marker_path}",
+        )
+    stored_faculty = metadata.get("faculty")
+    if (
+        stored_faculty
+        and normalize_faculty(stored_faculty) != normalize_faculty(
+            expected_faculty)
+    ):
+        raise RuntimeError(
+            f"Index faculty mismatch: expected {expected_faculty}, "
+            f"found {stored_faculty}. Existing index data was not modified."
+        )
+
+
+def create_collection(database_path, faculty, marker_path=None):
     client = chromadb.PersistentClient(
         path=database_path,
         settings=Settings(anonymized_telemetry=False),
     )
-    return client.get_or_create_collection(
-        name=INDEXING_CONFIG["collection_name"],
-        metadata={
-            "index_version": CHUNK_CONFIG["index_version"],
-            "model": MODEL_CONFIG["name"],
-            "chunking_strategy": CHUNK_CONFIG["strategy"],
-            "chunk_size": CHUNK_CONFIG["chunk_size"],
-            "chunk_size_unit": CHUNK_CONFIG["chunk_size_unit"],
-            "chunk_overlap": CHUNK_CONFIG["chunk_overlap"],
-            "faculty": faculty,
-        },
-    )
+    try:
+        collection = client.get_collection(
+            name=INDEXING_CONFIG["collection_name"])
+    except NotFoundError:
+        return client.create_collection(
+            name=INDEXING_CONFIG["collection_name"],
+            metadata=collection_index_metadata(faculty),
+        )
+    validate_reusable_collection(collection, marker_path, faculty)
+    return collection
 
 
 def build_vector_database(corpus_directory, faculty):
@@ -237,7 +310,8 @@ def build_vector_database(corpus_directory, faculty):
         faculty, CHUNK_CONFIG["index_version"], CONFIG)
     os.makedirs(paths["normalized"], exist_ok=True)
     files = discover_corpus_files(corpus_directory)
-    collection = create_collection(paths["vector_db"], faculty)
+    collection = create_collection(
+        paths["vector_db"], faculty, marker_path=paths["marker"])
     remove_stale_sources(collection, files, paths["marker"])
     model = create_model()
     chunker, refinery = create_chunker_tools(CHUNK_CONFIG)
@@ -256,6 +330,8 @@ def build_vector_database(corpus_directory, faculty):
 
     write_json_file(paths["marker"], {
         "index_version": CHUNK_CONFIG["index_version"],
+        "index_config_hash": INDEX_CONFIG_HASH,
+        "index_config": INDEX_CONFIG_PAYLOAD,
         "faculty": faculty,
         "target_directory": corpus_directory,
         "source_files": len(files),

@@ -8,9 +8,12 @@ import hashlib
 
 from project_config import (
     PROJECT_ROOT,
+    build_index_config_hash,
     faculty_index_paths,
+    index_config_payload,
     load_project_config,
     resolve_project_path,
+    validate_index_config_hash,
 )
 
 # Set cache and telemetry environment before importing model/database libraries.
@@ -49,12 +52,26 @@ from corpus_metadata import (
     write_json_file,
     write_normalized_document,
 )
-from pdf_extract import extract_university_content
+from pdf_extract import EXTRACTION_VERSION, extract_university_content
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError
 # --- CONFIGURATION ---
 MODEL_NAME = MODEL_CONFIG["name"]
 CHUNK_CONFIG = load_chunking_config()
 INDEX_VERSION = CHUNK_CONFIG["index_version"]
+if INDEXING_CONFIG.get("extraction_version") != EXTRACTION_VERSION:
+    raise RuntimeError(
+        "Configured extraction_version does not match pdf_extract.py")
+INDEX_CONFIG_HASH = build_index_config_hash(
+    PROJECT_CONFIG,
+    strategy=CHUNK_CONFIG["strategy"],
+    extraction_version=EXTRACTION_VERSION,
+)
+INDEX_CONFIG_PAYLOAD = index_config_payload(
+    PROJECT_CONFIG,
+    strategy=CHUNK_CONFIG["strategy"],
+    extraction_version=EXTRACTION_VERSION,
+)
 COLLECTION_NAME = INDEXING_CONFIG["collection_name"]
 ACTIVE_FACULTY = "default"
 DB_PATH = ""
@@ -99,6 +116,83 @@ WORK_QUEUE_MAX_FILES = int(INDEXING_CONFIG["work_queue_max_files"])
 WRITE_QUEUE_MAX_BATCHES = int(
     INDEXING_CONFIG["write_queue_max_batches"])
 THREAD_LOCAL = threading.local()
+
+
+def collection_index_metadata(faculty):
+    return {
+        "index_version": INDEX_VERSION,
+        "index_config_hash": INDEX_CONFIG_HASH,
+        "model": MODEL_NAME,
+        "model_revision": str(MODEL_CONFIG.get("revision") or "default"),
+        "chunking_strategy": CHUNKING_STRATEGY,
+        "chunk_size": CHUNK_SIZE,
+        "chunk_size_unit": CHUNK_SIZE_UNIT,
+        "chunk_overlap": CHUNK_OVERLAP,
+        "semantic_embedding_model": CHUNK_CONFIG.get(
+            "semantic_embedding_model", "none"),
+        "semantic_threshold": CHUNK_CONFIG.get("semantic_threshold", 0.0),
+        "chunk_tokenizer": CHUNK_CONFIG.get(
+            "tokenizer", CHUNK_CONFIG.get(
+                "semantic_embedding_model", "character")),
+        "encode_max_length": ENCODE_MAX_LENGTH,
+        "extraction_version": EXTRACTION_VERSION,
+        "faculty": faculty,
+    }
+
+
+def validate_reusable_index(collection, marker_path, expected_faculty=None):
+    metadata = collection.metadata or {}
+    stored_version = metadata.get("index_version")
+    if stored_version and stored_version != INDEX_VERSION:
+        raise RuntimeError(
+            f"Index version mismatch: expected {INDEX_VERSION}, "
+            f"found {stored_version}. Existing index data was not modified."
+        )
+    validate_index_config_hash(
+        metadata.get("index_config_hash"),
+        INDEX_CONFIG_HASH,
+        location="Chroma collection",
+    )
+
+    if marker_path and (
+        os.path.isfile(marker_path) or collection.count() > 0
+    ):
+        marker = load_json_file(marker_path, default={})
+        validate_index_config_hash(
+            marker.get("index_config_hash"),
+            INDEX_CONFIG_HASH,
+            location=f"Index marker {marker_path}",
+        )
+
+    stored_faculty = metadata.get("faculty")
+    if (
+        expected_faculty
+        and stored_faculty
+        and normalize_faculty(stored_faculty)
+        != normalize_faculty(expected_faculty)
+    ):
+        raise RuntimeError(
+            f"Index faculty mismatch: expected {expected_faculty}, "
+            f"found {stored_faculty}. Existing index data was not modified."
+        )
+    return True
+
+
+def open_compatible_collection(client, faculty):
+    try:
+        collection = client.get_collection(name=COLLECTION_NAME)
+    except NotFoundError:
+        return client.create_collection(
+            name=COLLECTION_NAME,
+            metadata=collection_index_metadata(faculty),
+        )
+
+    validate_reusable_index(
+        collection,
+        REFRESH_MARKER_PATH,
+        expected_faculty=faculty,
+    )
+    return collection
 
 
 def configure_runtime_paths(faculty):
@@ -332,6 +426,7 @@ def chroma_write_worker(write_queue, collection, result_log, stats):
                         "file_sha256": file_hash,
                         "source_metadata_sha256": source_metadata_hash,
                         "index_version": INDEX_VERSION,
+                        "index_config_hash": INDEX_CONFIG_HASH,
                         "model": MODEL_NAME,
                         "chunking_strategy": CHUNKING_STRATEGY,
                         "chunk_size": CHUNK_SIZE,
@@ -694,6 +789,7 @@ def write_reports(
         "Vector DB indexing report",
         f"Faculty: {ACTIVE_FACULTY}",
         f"Index version: {INDEX_VERSION}",
+        f"Index config hash: {INDEX_CONFIG_HASH}",
         f"Database path: {DB_PATH}",
         f"Collection: {COLLECTION_NAME}",
         f"Model: {MODEL_NAME}",
@@ -804,8 +900,22 @@ def main(argv=None):
     configure_runtime_paths(faculty)
     started_at = time.time()
 
-    # 1. Initialize BGE-M3
+    # 1. Validate an existing index before loading the model or mutating data.
+    client = chromadb.PersistentClient(
+        path=DB_PATH,
+        settings=Settings(anonymized_telemetry=False)
+    )
+    try:
+        collection = open_compatible_collection(client, faculty)
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
+        return 2
+
+    # 2. Initialize BGE-M3
     print("--- [STARTUP] Initializing BGE-M3 Model ---")
+    model_options = {}
+    if MODEL_CONFIG.get("revision"):
+        model_options["revision"] = MODEL_CONFIG["revision"]
     model = BGEM3FlagModel(
         MODEL_NAME,
         cache_dir=PROJECT_CACHE,
@@ -813,6 +923,7 @@ def main(argv=None):
             torch.cuda.is_available()
             and bool(MODEL_CONFIG.get("use_fp16_on_cuda", True))
         ),
+        **model_options,
     )
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -823,28 +934,6 @@ def main(argv=None):
     else:
         print(" > No GPU detected, running on CPU (will be slow).")
 
-    # 2. Database setup
-    client = chromadb.PersistentClient(
-        path=DB_PATH,
-        settings=Settings(anonymized_telemetry=False)
-    )
-    collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        metadata={
-            "index_version": INDEX_VERSION,
-            "model": MODEL_NAME,
-            "chunking_strategy": CHUNKING_STRATEGY,
-            "chunk_size": CHUNK_SIZE,
-            "chunk_size_unit": CHUNK_SIZE_UNIT,
-            "chunk_overlap": CHUNK_OVERLAP,
-            "semantic_embedding_model": CHUNK_CONFIG.get(
-                "semantic_embedding_model", "none"),
-            "semantic_threshold": CHUNK_CONFIG.get(
-                "semantic_threshold", 0.0),
-            "chunk_tokenizer": CHUNK_CONFIG.get(
-                "tokenizer", "not applicable"),
-            "faculty": faculty,
-        })
     files = discover_corpus_files(target_dir)
     stale_sources = remove_stale_sources(
         collection, files, REFRESH_MARKER_PATH)
@@ -943,6 +1032,8 @@ def main(argv=None):
     success = sum(1 for r in result_log if r["status"] == "success")
     write_json_file(REFRESH_MARKER_PATH, {
         "index_version": INDEX_VERSION,
+        "index_config_hash": INDEX_CONFIG_HASH,
+        "index_config": INDEX_CONFIG_PAYLOAD,
         "faculty": faculty,
         "target_directory": target_dir,
         "updated_at_unix": time.time(),

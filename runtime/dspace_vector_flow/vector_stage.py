@@ -6,14 +6,19 @@ from corpus_metadata import (
     chroma_metadata_fields,
     load_json_file,
     metadata_sha256,
+    normalize_faculty,
     write_json_file,
 )
 from project_config import (
+    build_index_config_hash,
     faculty_index_paths,
     get_chunking_profile,
+    index_config_payload,
     load_project_config,
     resolve_project_path,
+    validate_index_config_hash,
 )
+from pdf_extract import EXTRACTION_VERSION
 
 
 class VectorIndexer:
@@ -22,6 +27,23 @@ class VectorIndexer:
         self.model_config = self.config["model"]
         self.indexing_config = self.config["indexing"]
         self.chunk_config = get_chunking_profile(config=self.config)
+        configured_extraction_version = str(
+            self.indexing_config.get("extraction_version")
+            or EXTRACTION_VERSION
+        )
+        if configured_extraction_version != EXTRACTION_VERSION:
+            raise RuntimeError(
+                "Configured extraction_version does not match pdf_extract: "
+                f"{configured_extraction_version} != {EXTRACTION_VERSION}"
+            )
+        self.index_config_hash = build_index_config_hash(
+            self.config,
+            extraction_version=EXTRACTION_VERSION,
+        )
+        self.index_config_payload = index_config_payload(
+            self.config,
+            extraction_version=EXTRACTION_VERSION,
+        )
         self.model_cache = resolve_project_path(
             self.model_config["cache_dir"])
         os.makedirs(self.model_cache, exist_ok=True)
@@ -34,6 +56,7 @@ class VectorIndexer:
         import chromadb
         import torch
         from chromadb.config import Settings
+        from chromadb.errors import NotFoundError
         from FlagEmbedding import BGEM3FlagModel
         from chunking_config import (
             chunk_text,
@@ -44,18 +67,22 @@ class VectorIndexer:
         self.chromadb = chromadb
         self.torch = torch
         self.Settings = Settings
+        self.NotFoundError = NotFoundError
         self.chunk_text = chunk_text
         self.chunk_text_with_native_spans = chunk_text_with_native_spans
         self.chunker, self.refinery = create_chunker_tools(
             self.chunk_config)
-        self.model = BGEM3FlagModel(
-            self.model_config["name"],
-            cache_dir=self.model_cache,
-            use_fp16=(
+        model_options = {
+            "cache_dir": self.model_cache,
+            "use_fp16": (
                 torch.cuda.is_available()
                 and bool(self.model_config["use_fp16_on_cuda"])
             ),
-        )
+        }
+        if self.model_config.get("revision"):
+            model_options["revision"] = self.model_config["revision"]
+        self.model = BGEM3FlagModel(
+            self.model_config["name"], **model_options)
         if torch.cuda.is_available():
             self.model.model.to("cuda")
         self.model.model.eval()
@@ -80,19 +107,79 @@ class VectorIndexer:
                 path=paths["vector_db"],
                 settings=self.Settings(anonymized_telemetry=False),
             )
-            self.collections[collection_folder] = client.get_or_create_collection(
-                name=self.indexing_config["collection_name"],
-                metadata={
-                    "index_version": self.chunk_config["index_version"],
-                    "model": self.model_config["name"],
-                    "chunking_strategy": self.chunk_config["strategy"],
-                    "chunk_size": self.chunk_config["chunk_size"],
-                    "chunk_size_unit": self.chunk_config["chunk_size_unit"],
-                    "chunk_overlap": self.chunk_config["chunk_overlap"],
-                    "faculty": collection_folder,
-                },
-            )
+            try:
+                collection = client.get_collection(
+                    name=self.indexing_config["collection_name"])
+            except self.NotFoundError:
+                collection = client.create_collection(
+                    name=self.indexing_config["collection_name"],
+                    metadata=self.collection_metadata(collection_folder),
+                )
+            else:
+                self.validate_collection(
+                    collection,
+                    paths["marker"],
+                    collection_folder,
+                )
+            self.collections[collection_folder] = collection
         return self.collections[collection_folder]
+
+    def collection_metadata(self, collection_folder):
+        return {
+            "index_version": self.chunk_config["index_version"],
+            "index_config_hash": self.index_config_hash,
+            "model": self.model_config["name"],
+            "model_revision": str(
+                self.model_config.get("revision") or "default"),
+            "chunking_strategy": self.chunk_config["strategy"],
+            "chunk_size": self.chunk_config["chunk_size"],
+            "chunk_size_unit": self.chunk_config["chunk_size_unit"],
+            "chunk_overlap": self.chunk_config["chunk_overlap"],
+            "encode_max_length": int(
+                self.model_config["encode_max_length"]),
+            "extraction_version": EXTRACTION_VERSION,
+            "faculty": collection_folder,
+        }
+
+    def validate_collection(
+        self, collection, marker_path, expected_collection_folder
+    ):
+        metadata = collection.metadata or {}
+        stored_version = metadata.get("index_version")
+        if (
+            stored_version
+            and stored_version != self.chunk_config["index_version"]
+        ):
+            raise RuntimeError(
+                "Index version mismatch: expected "
+                f"{self.chunk_config['index_version']}, "
+                f"found {stored_version}. Existing index data was not modified."
+            )
+        validate_index_config_hash(
+            metadata.get("index_config_hash"),
+            self.index_config_hash,
+            location="Chroma collection",
+        )
+        if marker_path and (
+            os.path.isfile(marker_path) or collection.count() > 0
+        ):
+            marker = load_json_file(marker_path, default={})
+            validate_index_config_hash(
+                marker.get("index_config_hash"),
+                self.index_config_hash,
+                location=f"Index marker {marker_path}",
+            )
+        stored_faculty = metadata.get("faculty")
+        if (
+            stored_faculty
+            and normalize_faculty(stored_faculty)
+            != normalize_faculty(expected_collection_folder)
+        ):
+            raise RuntimeError(
+                "Index faculty mismatch: expected "
+                f"{expected_collection_folder}, found {stored_faculty}. "
+                "Existing index data was not modified."
+            )
 
     def remove_stale_sources(self, collection_folder, current_sources):
         paths = self.paths_for(collection_folder)
@@ -184,6 +271,7 @@ class VectorIndexer:
                 "file_sha256": document.file_sha256,
                 "source_metadata_sha256": metadata_hash,
                 "index_version": self.chunk_config["index_version"],
+                "index_config_hash": self.index_config_hash,
                 "model": self.model_config["name"],
                 "chunking_strategy": self.chunk_config["strategy"],
                 "chunk_size": self.chunk_config["chunk_size"],
@@ -221,6 +309,8 @@ class VectorIndexer:
         collection = self.collection_for(collection_folder)
         write_json_file(paths["marker"], {
             "index_version": self.chunk_config["index_version"],
+            "index_config_hash": self.index_config_hash,
+            "index_config": self.index_config_payload,
             "faculty": collection_folder,
             "updated_at_unix": time.time(),
             "source_files": len(source_keys),

@@ -7,7 +7,13 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from project_config import PROJECT_ROOT, load_project_config, resolve_project_path
+from project_config import (
+    PROJECT_ROOT,
+    build_index_config_hash,
+    load_project_config,
+    resolve_project_path,
+    validate_index_config_hash,
+)
 
 # Cache configuration must be set before importing model libraries.
 if hasattr(sys.stdout, "reconfigure"):
@@ -42,6 +48,7 @@ from chunking_config import create_chunker_tools, load_chunking_config
 from corpus_metadata import (
     DEFAULT_FACULTY,
     discover_normalized_documents,
+    load_json_file,
     normalize_faculty,
 )
 from detection_module_diff_p4 import (
@@ -50,9 +57,17 @@ from detection_module_diff_p4 import (
     perform_plagiarism_scan,
 )
 from model_module import model_manager
-from pdf_extract import extract_university_content
+from pdf_extract import EXTRACTION_VERSION, extract_university_content
 CHUNK_CONFIG = load_chunking_config()
 INDEX_VERSION = CHUNK_CONFIG["index_version"]
+if INDEXING_CONFIG.get("extraction_version") != EXTRACTION_VERSION:
+    raise RuntimeError(
+        "Configured extraction_version does not match pdf_extract.py")
+INDEX_CONFIG_HASH = build_index_config_hash(
+    PROJECT_CONFIG,
+    strategy=CHUNK_CONFIG["strategy"],
+    extraction_version=EXTRACTION_VERSION,
+)
 FACULTY_INDEX_ROOT = os.path.join(
     resolve_project_path(INDEXING_CONFIG["faculty_index_root"]),
     INDEX_VERSION,
@@ -198,6 +213,7 @@ def build_text_index(
         cache_namespace = (
             faculty,
             str(collection_metadata.get("index_version") or INDEX_VERSION),
+            str(collection_metadata.get("index_config_hash") or "unverified"),
             id(collection),
         )
     return {
@@ -219,13 +235,25 @@ def build_text_index(
     }
 
 
-def validate_collection(collection, expected_faculty=None):
+def validate_collection(collection, expected_faculty=None, marker_path=None):
     metadata = collection.metadata or {}
     stored_version = metadata.get("index_version")
     if stored_version and stored_version != INDEX_VERSION:
         raise RuntimeError(
             f"Index mismatch: API requested {INDEX_VERSION}, "
             f"database contains {stored_version}")
+    validate_index_config_hash(
+        metadata.get("index_config_hash"),
+        INDEX_CONFIG_HASH,
+        location="Chroma collection",
+    )
+    if marker_path is not None:
+        marker = load_json_file(marker_path, default={})
+        validate_index_config_hash(
+            marker.get("index_config_hash"),
+            INDEX_CONFIG_HASH,
+            location=f"Index marker {marker_path}",
+        )
     stored_faculty = metadata.get("faculty")
     if (
         expected_faculty
@@ -243,7 +271,11 @@ def load_physical_faculty_indexes(specs):
         chroma_client = chromadb.PersistentClient(path=spec["db_path"])
         collection = chroma_client.get_collection(
             name=INDEXING_CONFIG["collection_name"])
-        validate_collection(collection, expected_faculty=faculty)
+        validate_collection(
+            collection,
+            expected_faculty=faculty,
+            marker_path=spec["marker_path"],
+        )
         documents = discover_normalized_documents(spec["normalized_dir"])
         state = build_text_index(
             documents,
@@ -254,6 +286,7 @@ def load_physical_faculty_indexes(specs):
                 faculty,
                 os.path.normcase(os.path.abspath(spec["db_path"])),
                 str(collection.metadata.get("index_version") or INDEX_VERSION),
+                INDEX_CONFIG_HASH,
             ),
         )
         if state is not None:
@@ -271,7 +304,7 @@ def load_legacy_faculty_indexes():
     chroma_client = chromadb.PersistentClient(path=LEGACY_DB_PATH)
     collection = chroma_client.get_collection(
         name=INDEXING_CONFIG["collection_name"])
-    validate_collection(collection)
+    validate_collection(collection, marker_path=LEGACY_MARKER_PATH)
     grouped = {}
     for document in discover_normalized_documents(LEGACY_CORPUS_DIR):
         grouped.setdefault(document["faculty"], []).append(document)
@@ -288,6 +321,7 @@ def load_legacy_faculty_indexes():
                 faculty,
                 os.path.normcase(os.path.abspath(LEGACY_DB_PATH)),
                 str(collection.metadata.get("index_version") or INDEX_VERSION),
+                INDEX_CONFIG_HASH,
             ),
         )
         if state is not None:
@@ -346,15 +380,17 @@ async def lifespan(app: FastAPI):
     print("\n" + "="*50)
     print("--- [STARTUP] INITIALIZING SINGLETON ---")
 
-    # 1. SBERT from Cache
+    # 1. Validate indexes before loading the GPU model.
+    refresh_corpus_state(force=True)
+
+    # 2. SBERT from Cache
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f" > Loading Model to {device.upper()} from {CACHE_DIR}...")
     ml_state["sbert"] = model_manager.get_model(
         model_name=MODEL_CONFIG["name"],
         cache_dir=CACHE_DIR)
 
-    # 2. Open one ChromaDB and TF-IDF index per faculty.
-    refresh_corpus_state(force=True)
+    # 3. Configure the target chunker once.
     ml_state["chunking_config"] = dict(CHUNK_CONFIG)
     (
         ml_state["target_chunker"],

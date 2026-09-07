@@ -40,6 +40,7 @@ tokenizer = "BAAI/bge-m3"
 [indexing]
 faculty_index_root = "faculty_indexes"
 collection_name = "corpus_vault"
+extraction_version = "university_content_v2"
 semantic_extract_workers = 1
 default_extract_workers = 4
 encode_batch_size = 32

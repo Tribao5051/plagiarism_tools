@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import hashlib
 import io
 import json
@@ -16,6 +17,10 @@ from fastapi import UploadFile
 
 import api_service
 import detection_module_diff_p4 as detection_module
+import project_config
+import vector_db
+import vector_db_readable
+from dspace_vector_flow import vector_stage
 from corpus_metadata import (
     chroma_metadata_fields,
     discover_normalized_documents,
@@ -44,6 +49,43 @@ class FakeCollection:
         self.deleted.append(where["source"])
 
 
+class FakeIndexCollection:
+    def __init__(self, metadata, count=1):
+        self.metadata = metadata
+        self._count = count
+        self.deleted = []
+
+    def count(self):
+        return self._count
+
+    def delete(self, **kwargs):
+        self.deleted.append(kwargs)
+
+
+class FakeIndexClient:
+    def __init__(self, collection):
+        self.collection = collection
+        self.created = []
+
+    def get_collection(self, name):
+        return self.collection
+
+    def create_collection(self, **kwargs):
+        self.created.append(kwargs)
+        raise AssertionError("Existing incompatible index must not be replaced")
+
+    def get_or_create_collection(self, **kwargs):
+        return self.collection
+
+
+class FakeChromaModule:
+    def __init__(self, client):
+        self.client = client
+
+    def PersistentClient(self, **_kwargs):
+        return self.client
+
+
 class FakeSemanticCollection:
     def __init__(self, document, index_version="semantic-v1"):
         self.document = document
@@ -63,6 +105,226 @@ class FakeSemanticCollection:
 
 
 class RuntimeSelfTests(unittest.TestCase):
+    def test_index_config_hash_detects_chunk_size_and_max_length(self):
+        config = load_project_config()
+        extraction_version = "extract-v1"
+        baseline = project_config.build_index_config_hash(
+            config, extraction_version=extraction_version)
+
+        changed_chunk = copy.deepcopy(config)
+        strategy = changed_chunk["chunking"]["default_strategy"]
+        changed_chunk["chunking"]["profiles"][strategy]["chunk_size"] += 1
+        self.assertNotEqual(
+            baseline,
+            project_config.build_index_config_hash(
+                changed_chunk, extraction_version=extraction_version),
+        )
+
+        changed_length = copy.deepcopy(config)
+        changed_length["model"]["encode_max_length"] += 1
+        self.assertNotEqual(
+            baseline,
+            project_config.build_index_config_hash(
+                changed_length, extraction_version=extraction_version),
+        )
+
+        changed_revision = copy.deepcopy(config)
+        changed_revision["model"]["revision"] = "different-revision"
+        self.assertNotEqual(
+            baseline,
+            project_config.build_index_config_hash(
+                changed_revision, extraction_version=extraction_version),
+        )
+
+        changed_tokenizer = copy.deepcopy(config)
+        changed_tokenizer["chunking"]["profiles"][strategy][
+            "semantic_embedding_model"
+        ] = "different-semantic-tokenizer"
+        self.assertNotEqual(
+            baseline,
+            project_config.build_index_config_hash(
+                changed_tokenizer, extraction_version=extraction_version),
+        )
+
+        self.assertNotEqual(
+            baseline,
+            project_config.build_index_config_hash(
+                config, extraction_version="extract-v2"),
+        )
+
+    def test_index_config_hash_ignores_batch_workers_and_cache_path(self):
+        config = load_project_config()
+        changed = copy.deepcopy(config)
+        changed["indexing"]["encode_batch_size"] += 16
+        changed["indexing"]["default_extract_workers"] += 2
+        changed["indexing"]["semantic_extract_workers"] += 2
+        changed["model"]["cache_dir"] = "a-different-cache"
+
+        baseline = project_config.build_index_config_hash(
+            config, extraction_version="extract-v1")
+        changed_hash = project_config.build_index_config_hash(
+            changed, extraction_version="extract-v1")
+        self.assertEqual(baseline, changed_hash)
+
+    def test_index_config_hash_uses_canonical_json(self):
+        left = {"model": {"name": "bge", "revision": "main"}, "size": 384}
+        right = {"size": 384, "model": {"revision": "main", "name": "bge"}}
+        self.assertEqual(
+            project_config.canonical_json_sha256(left),
+            project_config.canonical_json_sha256(right),
+        )
+
+    def test_api_rejects_index_missing_hash_without_deleting(self):
+        collection = FakeIndexCollection({
+            "index_version": api_service.INDEX_VERSION,
+            "faculty": "computer-science",
+        })
+
+        with self.assertRaisesRegex(RuntimeError, "verify or rebuild"):
+            api_service.validate_collection(
+                collection, expected_faculty="computer-science")
+
+        self.assertEqual(collection.deleted, [])
+
+    def test_vector_rejects_mismatched_hash_without_deleting(self):
+        collection = FakeIndexCollection({
+            "index_version": vector_db.INDEX_VERSION,
+            "index_config_hash": "wrong-hash",
+        })
+        client = FakeIndexClient(collection)
+        with tempfile.TemporaryDirectory() as root:
+            marker_path = os.path.join(root, "corpus_index.json")
+            with open(marker_path, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "index_config_hash": vector_db.INDEX_CONFIG_HASH,
+                }, handle)
+
+            with patch.object(
+                vector_db, "REFRESH_MARKER_PATH", marker_path
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError, "configuration mismatch"
+                ):
+                    vector_db.open_compatible_collection(
+                        client, "computer-science")
+
+        self.assertEqual(collection.deleted, [])
+        self.assertEqual(client.created, [])
+
+    def test_vector_rejects_legacy_index_missing_hash_without_deleting(self):
+        collection = FakeIndexCollection({
+            "index_version": vector_db.INDEX_VERSION,
+        })
+
+        with self.assertRaisesRegex(RuntimeError, "verify or rebuild"):
+            vector_db.validate_reusable_index(collection, marker_path=None)
+
+        self.assertEqual(collection.deleted, [])
+
+    def test_api_rejects_marker_missing_hash(self):
+        collection = FakeIndexCollection({
+            "index_version": api_service.INDEX_VERSION,
+            "index_config_hash": api_service.INDEX_CONFIG_HASH,
+            "faculty": "computer-science",
+        })
+        with tempfile.TemporaryDirectory() as root:
+            marker_path = os.path.join(root, "corpus_index.json")
+            with open(marker_path, "w", encoding="utf-8") as handle:
+                json.dump({"index_version": api_service.INDEX_VERSION}, handle)
+
+            with self.assertRaisesRegex(RuntimeError, "verify or rebuild"):
+                api_service.validate_collection(
+                    collection,
+                    expected_faculty="computer-science",
+                    marker_path=marker_path,
+                )
+
+        self.assertEqual(collection.deleted, [])
+
+    def test_matching_hash_allows_api_and_vector_reuse(self):
+        collection = FakeIndexCollection({
+            "index_version": api_service.INDEX_VERSION,
+            "index_config_hash": api_service.INDEX_CONFIG_HASH,
+            "faculty": "computer-science",
+        })
+        with tempfile.TemporaryDirectory() as root:
+            marker_path = os.path.join(root, "corpus_index.json")
+            with open(marker_path, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "index_config_hash": api_service.INDEX_CONFIG_HASH,
+                }, handle)
+
+            api_service.validate_collection(
+                collection,
+                expected_faculty="computer-science",
+                marker_path=marker_path,
+            )
+            self.assertTrue(vector_db.validate_reusable_index(
+                collection,
+                marker_path,
+                expected_faculty="computer-science",
+            ))
+
+        self.assertEqual(collection.deleted, [])
+
+    def test_readable_vector_path_rejects_unverified_index(self):
+        collection = FakeIndexCollection({
+            "index_version": vector_db_readable.CHUNK_CONFIG["index_version"],
+            "faculty": "computer-science",
+        })
+        client = FakeIndexClient(collection)
+
+        with patch.object(
+            vector_db_readable.chromadb,
+            "PersistentClient",
+            return_value=client,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "verify or rebuild"):
+                vector_db_readable.create_collection(
+                    "unused-vector-path",
+                    "computer-science",
+                    marker_path=None,
+                )
+
+        self.assertEqual(collection.deleted, [])
+        self.assertEqual(client.created, [])
+
+    def test_dspace_vector_path_rejects_mismatched_index(self):
+        indexer = vector_stage.VectorIndexer.__new__(
+            vector_stage.VectorIndexer)
+        indexer.config = load_project_config()
+        indexer.model_config = indexer.config["model"]
+        indexer.indexing_config = indexer.config["indexing"]
+        indexer.chunk_config = get_chunking_profile(config=indexer.config)
+        indexer.index_config_hash = project_config.build_index_config_hash(
+            indexer.config,
+            extraction_version=vector_stage.EXTRACTION_VERSION,
+        )
+        indexer.collections = {}
+        indexer.paths = {}
+        collection = FakeIndexCollection({
+            "index_version": indexer.chunk_config["index_version"],
+            "index_config_hash": "wrong-hash",
+            "faculty": "computer-science",
+        })
+        client = FakeIndexClient(collection)
+        indexer.chromadb = FakeChromaModule(client)
+        indexer.Settings = lambda **_kwargs: object()
+
+        with tempfile.TemporaryDirectory() as root:
+            marker_path = os.path.join(root, "corpus_index.json")
+            with patch.object(indexer, "paths_for", return_value={
+                "vector_db": os.path.join(root, "vector_db"),
+                "marker": marker_path,
+            }):
+                with self.assertRaisesRegex(
+                    RuntimeError, "configuration mismatch"
+                ):
+                    indexer.collection_for("computer-science")
+
+        self.assertEqual(collection.deleted, [])
+        self.assertEqual(client.created, [])
+
     def test_reorganized_runtime_paths_keep_existing_state_root(self):
         self.assertEqual(
             DEFAULT_CONFIG_PATH,

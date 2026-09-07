@@ -25,10 +25,14 @@ class ModelManager:
             cls._instance = super(ModelManager, cls).__new__(cls)
         return cls._instance
 
-    def get_model(self, model_name=None, cache_dir=None):
+    def get_model(self, model_name=None, cache_dir=None, revision=None):
         if self._model is None:
             model_name = model_name or MODEL_CONFIG["name"]
             cache_dir = cache_dir or DEFAULT_CACHE_DIR
+            model_options = {}
+            selected_revision = revision or MODEL_CONFIG.get("revision")
+            if selected_revision:
+                model_options["revision"] = selected_revision
             print(f"--- [STARTUP] Initializing BGE-M3 on {device.upper()} ---")
 
             if not os.path.exists(cache_dir):
@@ -42,7 +46,8 @@ class ModelManager:
                     device == "cuda"
                     and bool(MODEL_CONFIG.get("use_fp16_on_cuda", True))
                 ),
-                cache_dir=cache_dir
+                cache_dir=cache_dir,
+                **model_options,
             )
 
             # Đưa model về đúng device

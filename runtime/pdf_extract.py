@@ -6,6 +6,7 @@ import time
 from project_config import PROJECT_ROOT
 
 
+EXTRACTION_VERSION = "university_content_v2"
 DEBUG_FOLDER = os.path.join(PROJECT_ROOT, "debug_extractions")
 
 # =========================

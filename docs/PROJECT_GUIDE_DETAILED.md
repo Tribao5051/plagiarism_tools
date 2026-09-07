@@ -171,6 +171,42 @@ dùng tune; test chỉ dùng một lần để báo cáo cuối.
 
 **Commit:** `f895a26`.
 
+### Task 7 - Phát hiện index không còn khớp cấu hình
+
+**Trước khi sửa:** API chủ yếu kiểm tra `index_version`; `vector_db.py` có thể mở
+lại collection cũ bằng `get_or_create_collection`. Nếu chunk size, tokenizer,
+encode max length hoặc extraction thay đổi nhưng tên index version không đổi,
+vector cũ vẫn có thể bị tái sử dụng như thể tương thích.
+
+**Nguyên nhân:** index chưa lưu fingerprint đầy đủ của những cấu hình trực tiếp
+quyết định text chunk và embedding vector.
+
+**Sau khi sửa:** `index_config_hash` là SHA-256 của JSON canonical, dùng
+`sort_keys=True` và separator cố định. Payload gồm model/revision, tokenizer,
+FP16 config, chunking strategy và các tham số chunk/overlap, encode max length,
+cùng extraction version. Batch size, số workers và cache path không nằm trong
+hash vì chúng chỉ ảnh hưởng hiệu năng/vị trí lưu, không thay đổi ý nghĩa vector.
+
+Hash được lưu trong Chroma collection metadata, metadata từng chunk và
+`corpus_index.json`. API kiểm tra cả collection lẫn marker trước khi load/reuse
+index. Cả `vector_db.py`, `vector_db_readable.py` và DSpace vector stage đều dùng
+`get_collection` để kiểm tra index hiện có; chỉ dùng `create_collection` khi
+collection thật sự chưa tồn tại. Đường production kiểm tra trước khi load model,
+xóa stale source hoặc ghi thêm dữ liệu.
+
+Index cũ thiếu hash hoặc hash khác sẽ dừng với thông báo `verify or rebuild
+manually`. Tool không tự thêm hash, không tự coi tương thích và không tự xóa DB.
+Kiểm tra read-only cho thấy marker `pan-evaluation` hiện tại chưa có hash, nên
+index này cần được rebuild có chủ đích trước khi chạy API với phiên bản mới.
+
+Hash cấu hình hiện tại:
+
+```text
+20fa24fde89ccc8662c20172ebf6979df0f3123e43d04eab117edc537d73aef7
+```
+
+**Commit:** commit Task 7 có message `fix: validate vector index configuration`.
+
 ## 6. Cách chạy sau khi sắp xếp
 
 Mở CMD:
@@ -229,14 +265,18 @@ Git track.
 5. Accuracy chỉ được kết luận từ tập test giữ riêng, không từ unit test hoặc tập
    đã dùng tune.
 
-Sau Task 6, bộ test liên quan có 53 test đạt. Sau khi tổ chức lại thư mục và thêm
-regression test cho project-root path, toàn bộ 54 test tiếp tục đạt bằng cả
-Python trực tiếp và `tests\\run_all_tests.cmd`.
+Sau Task 6, bộ test liên quan có 53 test đạt. Sau khi tổ chức lại thư mục và hoàn
+thành Task 7, toàn bộ 64 test đạt. Mười test Task 7 kiểm tra canonical JSON,
+chunk/max-length/revision/tokenizer/extraction thay đổi, batch/workers/cache path
+không đổi hash, index cũ/mismatch không bị xóa, hash hợp lệ được reuse, và hai
+đường tạo vector phụ cũng không bỏ qua kiểm tra.
 
 ## 9. Giới hạn còn lại
 
 - Chưa có raw-text offset mapping nên chưa có character precision đáng tin cậy.
 - Kết quả benchmark cũ phải chạy lại vì Task 6 thay đổi cách tạo positive label.
+- Index `pan-evaluation` cũ chưa có `index_config_hash`; API chủ động từ chối cho
+  tới khi người dùng xác minh hoặc rebuild, không tự sửa DB thật.
 - `step=1` tăng độ đúng Phase 4 nhưng có thể tốn RAM/thời gian trên file dài.
 - Unit test chứng minh lỗi logic đã được chặn, không chứng minh accuracy tăng.
 - Cần benchmark PAN held-out và sau đó thêm dataset khác để đánh giá khả năng
@@ -247,4 +287,5 @@ Python trực tiếp và `tests\\run_all_tests.cmd`.
 - `0837a3f`: Task 1-4.
 - `2af12c3`: Task 5.
 - `f895a26`: Task 6.
-- Commit tổ chức thư mục được tạo sau khi toàn bộ test đạt.
+- `2047859`: tổ chức lại runtime/tests/performance/docs/test_data.
+- Task 7: commit có message `fix: validate vector index configuration`.
