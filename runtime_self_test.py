@@ -5,12 +5,15 @@ import json
 import os
 import tempfile
 import unittest
+from collections import OrderedDict
 from unittest.mock import patch
 
+import fitz
 import torch
 from fastapi import UploadFile
 
 import api_service
+import detection_module_diff_p4 as detection_module
 from corpus_metadata import (
     chroma_metadata_fields,
     discover_normalized_documents,
@@ -21,6 +24,7 @@ from corpus_scheduler import corpus_snapshot, discover_faculty_corpora
 import dspace_sync
 from dspace_sync import DSpaceClient, checksum_matches, resolve_faculty
 from dspace_vector_pipeline import collection_corpora
+from pdf_extract import extract_university_content
 from project_config import get_chunking_profile, load_project_config
 from vector_db import remove_stale_sources
 
@@ -33,7 +37,236 @@ class FakeCollection:
         self.deleted.append(where["source"])
 
 
+class FakeSemanticCollection:
+    def __init__(self, document, index_version="semantic-v1"):
+        self.document = document
+        self.metadata = {"index_version": index_version}
+        self.get_calls = []
+
+    def count(self):
+        return 1
+
+    def get(self, **kwargs):
+        self.get_calls.append(kwargs)
+        return {
+            "embeddings": [[1.0, 0.0]],
+            "documents": [self.document],
+            "metadatas": [{"source": "paper.pdf"}],
+        }
+
+
 class RuntimeSelfTests(unittest.TestCase):
+    @staticmethod
+    def build_pdf_bytes(pages):
+        document = fitz.open()
+        for lines in pages:
+            page = document.new_page()
+            y_position = 72
+            for line in lines:
+                page.insert_text((72, y_position), line)
+                y_position += 22
+        payload = document.tobytes()
+        document.close()
+        return payload
+
+    @staticmethod
+    def scan_upload():
+        return UploadFile(
+            filename="submission.txt",
+            file=io.BytesIO(b"submission content"),
+        )
+
+    @staticmethod
+    def build_cache_test_state(root, faculty, text, collection):
+        faculty_directory = os.path.join(root, faculty)
+        os.makedirs(faculty_directory, exist_ok=True)
+        text_path = os.path.join(faculty_directory, "paper.txt")
+        with open(text_path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        return api_service.build_text_index(
+            [{"path": text_path, "source": "paper.pdf"}],
+            faculty,
+            collection,
+            object(),
+        )
+
+    def test_pdf_keeps_content_before_references_on_same_page(self):
+        payload = self.build_pdf_bytes([[
+            "A meaningful conclusion remains part of the submission.",
+            "References",
+            "Smith, A. Example source.",
+        ]])
+
+        extracted = extract_university_content(
+            payload, filename="same-page.pdf", save_debug=False)
+
+        self.assertIn("meaningful conclusion", extracted)
+        self.assertNotIn("Example source", extracted)
+
+    def test_pdf_removes_page_that_only_contains_references(self):
+        payload = self.build_pdf_bytes([
+            ["The main discussion must remain available."],
+            ["References", "Smith, A. Example source."],
+        ])
+
+        extracted = extract_university_content(
+            payload, filename="reference-page.pdf", save_debug=False)
+
+        self.assertIn("main discussion", extracted)
+        self.assertNotIn("References", extracted)
+        self.assertNotIn("Example source", extracted)
+
+    def test_pdf_does_not_cut_references_used_inside_a_sentence(self):
+        sentence = "This discussion references earlier studies in the field."
+        expected = (
+            "The introduction must remain available. "
+            f"{sentence} "
+            "The conclusion must also remain available."
+        )
+        payload = self.build_pdf_bytes([[
+            "The introduction must remain available.",
+            sentence,
+            "The conclusion must also remain available.",
+        ]])
+
+        extracted = extract_university_content(
+            payload, filename="no-reference-heading.pdf", save_debug=False)
+
+        self.assertEqual(extracted, expected)
+
+    @staticmethod
+    def verified_fingerprint_anchors(student_text, source_text):
+        student_hashes, student_compact = (
+            detection_module.get_fingerprints(student_text)
+        )
+        source_hashes, source_compact = (
+            detection_module.get_fingerprints(source_text)
+        )
+        return detection_module.build_verified_fingerprint_anchors(
+            student_hashes,
+            student_compact,
+            source_hashes,
+            source_compact,
+        )
+
+    def test_fingerprints_detect_copy_after_one_to_four_prefix_chars(self):
+        source = (
+            "Distinct copied material remains detectable when its alignment "
+            "moves by a few characters at the beginning of the submission."
+        )
+
+        for prefix_length in range(1, 5):
+            student = ("x" * prefix_length) + source
+            anchors, matched_positions = self.verified_fingerprint_anchors(
+                student, source)
+            groups = detection_module.consolidate_verbatim_anchors(anchors)
+            qualifying_groups = [
+                group for group in groups
+                if max(item["student_end"] for item in group)
+                - group[0]["student_start"]
+                >= detection_module.VERBATIM_MIN_MATCH_CHARS
+            ]
+
+            self.assertTrue(matched_positions, prefix_length)
+            self.assertTrue(qualifying_groups, prefix_length)
+            self.assertEqual(
+                min(item["student_start"] for item in anchors),
+                prefix_length,
+            )
+
+    def test_fingerprints_default_to_every_window(self):
+        text = "abcdefghijklmnopqrstuvwxyz0123456789"
+        fingerprints, compact_text = detection_module.get_fingerprints(text)
+        positions = sorted(
+            occurrence["pos"]
+            for occurrences in fingerprints.values()
+            for occurrence in occurrences
+        )
+
+        self.assertEqual(
+            positions,
+            list(range(len(compact_text) - 25 + 1)),
+        )
+
+    def test_fingerprint_highlight_maps_whitespace_to_original_offsets(self):
+        source = (
+            "Alpha beta gamma delta epsilon zeta eta theta iota kappa "
+            "lambda mu."
+        )
+        student = (
+            " \n\tAlpha   beta\tgamma delta  epsilon zeta eta theta "
+            "iota kappa lambda mu.\n"
+        )
+
+        anchors, _matched_positions = self.verified_fingerprint_anchors(
+            student, source)
+        group = max(
+            detection_module.consolidate_verbatim_anchors(anchors),
+            key=len,
+        )
+        student_start = group[0]["student_start"]
+        student_end = max(item["student_end"] for item in group)
+        highlighted = student[student_start:student_end]
+        highlighted_compact, _ = detection_module.compact_with_index_map(
+            highlighted.lower())
+        source_compact, _ = detection_module.compact_with_index_map(
+            source.lower())
+
+        self.assertEqual(student_start, student.index("Alpha"))
+        self.assertEqual(highlighted_compact, source_compact)
+
+    def test_fingerprints_keep_all_repeated_source_positions(self):
+        passage = (
+            "Repeated copied material must retain every valid source "
+            "location for correct evidence highlighting."
+        )
+        source = f"First copy: {passage}\nBetween copies.\nSecond copy: {passage}"
+
+        anchors, _matched_positions = self.verified_fingerprint_anchors(
+            passage, source)
+        first_window_sources = {
+            item["source_start"]
+            for item in anchors
+            if item["student_pos"] == 0
+        }
+        groups = detection_module.consolidate_verbatim_anchors(anchors)
+        qualifying_source_starts = {
+            group[0]["source_start"]
+            for group in groups
+            if max(item["student_end"] for item in group)
+            - group[0]["student_start"]
+            >= detection_module.VERBATIM_MIN_MATCH_CHARS
+        }
+        expected_source_starts = {
+            source.index(passage),
+            source.rindex(passage),
+        }
+
+        self.assertEqual(first_window_sources, expected_source_starts)
+        self.assertTrue(
+            expected_source_starts.issubset(qualifying_source_starts)
+        )
+
+    def test_fingerprint_hash_collision_requires_content_verification(self):
+        occurrence = {
+            "pos": 0,
+            "student_start": 0,
+            "student_end": 25,
+            "length": 25,
+        }
+
+        anchors, matched_positions = (
+            detection_module.build_verified_fingerprint_anchors(
+                {"forced-collision": [dict(occurrence)]},
+                "a" * 25,
+                {"forced-collision": [dict(occurrence)]},
+                "b" * 25,
+            )
+        )
+
+        self.assertEqual(anchors, [])
+        self.assertEqual(matched_positions, set())
+
     def test_selected_config_is_semantic_batch_32(self):
         config = load_project_config()
         profile = get_chunking_profile(config=config)
@@ -41,6 +274,7 @@ class RuntimeSelfTests(unittest.TestCase):
         self.assertEqual(profile["chunk_size"], 384)
         self.assertEqual(config["indexing"]["encode_batch_size"], 32)
         self.assertEqual(config["model"]["encode_max_length"], 512)
+        self.assertFalse(config["api"]["allow_oracle_candidate_sources"])
 
     def test_cuda_is_available_on_this_machine(self):
         self.assertTrue(torch.cuda.is_available())
@@ -292,6 +526,261 @@ class RuntimeSelfTests(unittest.TestCase):
             response = asyncio.run(api_service.scan(
                 upload, faculty="unknown"))
         self.assertEqual(response.status_code, 400)
+
+    def test_oracle_candidate_sources_are_disabled_by_default(self):
+        with (
+            patch.dict(
+                api_service.ml_state,
+                {"faculty_indexes": {}, "filename_set": {"known.pdf"}},
+                clear=True,
+            ),
+            patch.dict(
+                api_service.API_CONFIG,
+                {"allow_oracle_candidate_sources": False},
+            ),
+            patch.object(api_service, "perform_plagiarism_scan") as detector,
+        ):
+            response = asyncio.run(api_service.scan(
+                self.scan_upload(), candidate_sources="known.pdf"))
+        self.assertEqual(response.status_code, 403)
+        detector.assert_not_called()
+
+    def test_empty_oracle_candidate_sources_are_rejected(self):
+        with (
+            patch.dict(
+                api_service.ml_state,
+                {"faculty_indexes": {}, "filename_set": {"known.pdf"}},
+                clear=True,
+            ),
+            patch.dict(
+                api_service.API_CONFIG,
+                {"allow_oracle_candidate_sources": True},
+            ),
+            patch.object(api_service, "perform_plagiarism_scan") as detector,
+        ):
+            response = asyncio.run(api_service.scan(
+                self.scan_upload(), candidate_sources=" , "))
+        self.assertEqual(response.status_code, 400)
+        detector.assert_not_called()
+
+    def test_unknown_oracle_candidate_source_is_rejected(self):
+        with (
+            patch.dict(
+                api_service.ml_state,
+                {"faculty_indexes": {}, "filename_set": {"known.pdf"}},
+                clear=True,
+            ),
+            patch.dict(
+                api_service.API_CONFIG,
+                {"allow_oracle_candidate_sources": True},
+            ),
+            patch.object(api_service, "perform_plagiarism_scan") as detector,
+        ):
+            response = asyncio.run(api_service.scan(
+                self.scan_upload(),
+                candidate_sources="known.pdf,missing.pdf",
+            ))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"missing.pdf", response.body)
+        detector.assert_not_called()
+
+    def test_valid_oracle_source_is_forwarded_when_enabled(self):
+        captured_state = {}
+
+        def fake_detector(_content, state):
+            captured_state.update(state)
+            return {"results": [], "performance": {}}
+
+        with (
+            patch.dict(
+                api_service.ml_state,
+                {"faculty_indexes": {}, "filename_set": {"known.pdf"}},
+                clear=True,
+            ),
+            patch.dict(
+                api_service.API_CONFIG,
+                {"allow_oracle_candidate_sources": True},
+            ),
+            patch.object(
+                api_service,
+                "extract_university_content",
+                return_value="submission content",
+            ),
+            patch.object(
+                api_service,
+                "perform_plagiarism_scan",
+                side_effect=fake_detector,
+            ),
+        ):
+            response = asyncio.run(api_service.scan(
+                self.scan_upload(), candidate_sources="known.pdf"))
+        self.assertIsInstance(response, dict)
+        self.assertEqual(
+            captured_state["forced_candidate_sources"], ["known.pdf"])
+
+    def test_normal_scan_does_not_force_candidate_sources(self):
+        captured_state = {}
+
+        def fake_detector(_content, state):
+            captured_state.update(state)
+            return {"results": [], "performance": {}}
+
+        with (
+            patch.dict(
+                api_service.ml_state,
+                {"faculty_indexes": {}, "filename_set": {"known.pdf"}},
+                clear=True,
+            ),
+            patch.object(
+                api_service,
+                "extract_university_content",
+                return_value="submission content",
+            ),
+            patch.object(
+                api_service,
+                "perform_plagiarism_scan",
+                side_effect=fake_detector,
+            ),
+        ):
+            response = asyncio.run(api_service.scan(self.scan_upload()))
+        self.assertIsInstance(response, dict)
+        self.assertNotIn("forced_candidate_sources", captured_state)
+
+    def test_faculty_caches_are_isolated_when_source_names_match(self):
+        with tempfile.TemporaryDirectory() as root:
+            collection_a = FakeSemanticCollection("faculty A vector text")
+            collection_b = FakeSemanticCollection("faculty B vector text")
+            text_a = (
+                "faculty A contains unique computer vision research evidence")
+            text_b = (
+                "faculty B contains separate network security research evidence")
+            state_a = self.build_cache_test_state(
+                root, "faculty-a", text_a, collection_a)
+            state_b = self.build_cache_test_state(
+                root, "faculty-b", text_b, collection_b)
+
+            shared = {
+                "semantic_source_cache": OrderedDict(),
+                "fingerprint_cache": OrderedDict(),
+            }
+            scan_a = shared.copy()
+            scan_a.update(state_a)
+            scan_b = shared.copy()
+            scan_b.update(state_b)
+
+            _, documents_a, _, hit_a = (
+                detection_module.get_cached_semantic_source(
+                    scan_a, "paper.pdf"))
+            _, documents_b, _, hit_b = (
+                detection_module.get_cached_semantic_source(
+                    scan_b, "paper.pdf"))
+            fingerprints_a, _compact_a, fingerprint_hit_a = (
+                detection_module.get_cached_fingerprints(
+                    scan_a, "paper.pdf", text_a))
+            fingerprints_b, _compact_b, fingerprint_hit_b = (
+                detection_module.get_cached_fingerprints(
+                    scan_b, "paper.pdf", text_b))
+
+        self.assertEqual(documents_a, ["faculty A vector text"])
+        self.assertEqual(documents_b, ["faculty B vector text"])
+        self.assertFalse(hit_a)
+        self.assertFalse(hit_b)
+        self.assertFalse(fingerprint_hit_a)
+        self.assertFalse(fingerprint_hit_b)
+        self.assertNotEqual(set(fingerprints_a), set(fingerprints_b))
+        self.assertEqual(len(collection_a.get_calls), 1)
+        self.assertEqual(len(collection_b.get_calls), 1)
+        self.assertIsNot(
+            state_a["semantic_source_cache"],
+            state_b["semantic_source_cache"],
+        )
+        self.assertIsNot(
+            state_a["fingerprint_cache"],
+            state_b["fingerprint_cache"],
+        )
+
+    def test_source_version_change_invalidates_both_caches(self):
+        with tempfile.TemporaryDirectory() as root:
+            collection = FakeSemanticCollection("old vector text")
+            state = self.build_cache_test_state(
+                root, "faculty-a", "old full text for fingerprints", collection)
+            detection_module.get_cached_semantic_source(state, "paper.pdf")
+            old_fingerprints, _old_compact, _ = (
+                detection_module.get_cached_fingerprints(
+                    state, "paper.pdf", "old full text for fingerprints")
+            )
+
+            new_text = "new and different full text for fingerprints"
+            state["source_versions"]["paper.pdf"] = hashlib.sha256(
+                new_text.encode("utf-8")).hexdigest()
+            collection.document = "new vector text"
+            _, documents, _, semantic_hit = (
+                detection_module.get_cached_semantic_source(
+                    state, "paper.pdf"))
+            new_fingerprints, _new_compact, fingerprint_hit = (
+                detection_module.get_cached_fingerprints(
+                    state, "paper.pdf", new_text))
+
+        self.assertEqual(documents, ["new vector text"])
+        self.assertFalse(semantic_hit)
+        self.assertFalse(fingerprint_hit)
+        self.assertNotEqual(set(old_fingerprints), set(new_fingerprints))
+        self.assertEqual(len(collection.get_calls), 2)
+
+    def test_unchanged_source_reuses_both_faculty_caches(self):
+        with tempfile.TemporaryDirectory() as root:
+            text = "stable source text long enough for fingerprint caching"
+            collection = FakeSemanticCollection("stable vector text")
+            state = self.build_cache_test_state(
+                root, "faculty-a", text, collection)
+
+            detection_module.get_cached_semantic_source(state, "paper.pdf")
+            _, documents, _, semantic_hit = (
+                detection_module.get_cached_semantic_source(
+                    state, "paper.pdf"))
+            detection_module.get_cached_fingerprints(
+                state, "paper.pdf", text)
+            _, _compact, fingerprint_hit = (
+                detection_module.get_cached_fingerprints(
+                    state, "paper.pdf", text)
+            )
+
+        self.assertEqual(documents, ["stable vector text"])
+        self.assertTrue(semantic_hit)
+        self.assertTrue(fingerprint_hit)
+        self.assertEqual(len(collection.get_calls), 1)
+
+    def test_index_namespace_change_invalidates_semantic_cache(self):
+        with tempfile.TemporaryDirectory() as root:
+            collection = FakeSemanticCollection("version one vector")
+            state = self.build_cache_test_state(
+                root, "faculty-a", "unchanged full text", collection)
+            detection_module.get_cached_semantic_source(state, "paper.pdf")
+
+            state["cache_namespace"] = ("faculty-a", "semantic-v2")
+            collection.document = "version two vector"
+            _, documents, _, cache_hit = (
+                detection_module.get_cached_semantic_source(
+                    state, "paper.pdf"))
+
+        self.assertEqual(documents, ["version two vector"])
+        self.assertFalse(cache_hit)
+        self.assertEqual(len(collection.get_calls), 2)
+
+    def test_semantic_cache_query_keeps_faculty_filter(self):
+        with tempfile.TemporaryDirectory() as root:
+            collection = FakeSemanticCollection("faculty vector")
+            state = self.build_cache_test_state(
+                root, "faculty-a", "faculty full text", collection)
+            state["collection_where"] = {"faculty": "faculty-a"}
+            detection_module.get_cached_semantic_source(state, "paper.pdf")
+
+        self.assertEqual(collection.get_calls[0]["where"], {
+            "$and": [
+                {"source": "paper.pdf"},
+                {"faculty": "faculty-a"},
+            ]
+        })
 
     def test_vietnamese_faculty_key_is_stable_ascii(self):
         self.assertEqual(

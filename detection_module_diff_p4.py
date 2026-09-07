@@ -922,33 +922,58 @@ def consolidate_verbatim_anchors(anchors):
     if not anchors:
         return []
 
-    ordered = sorted(
-        anchors,
-        key=lambda item: (
-            item["student_start"],
-            item["source_start"],
+    if all(
+            "student_pos" in anchor and "source_pos" in anchor
+            for anchor in anchors):
+        alignment_buckets = defaultdict(list)
+        for anchor in anchors:
+            alignment = anchor["source_pos"] - anchor["student_pos"]
+            alignment_buckets[alignment].append(anchor)
+        buckets = alignment_buckets.values()
+        position_fields = ("student_pos", "source_pos")
+    else:
+        buckets = [anchors]
+        position_fields = ("student_start", "source_start")
+
+    groups = []
+    for bucket in buckets:
+        ordered = sorted(
+            bucket,
+            key=lambda item: (
+                item[position_fields[0]],
+                item[position_fields[1]],
+            ),
+        )
+        current = [ordered[0]]
+
+        for anchor in ordered[1:]:
+            previous = current[-1]
+            student_delta = (
+                anchor[position_fields[0]] - previous[position_fields[0]]
+            )
+            source_delta = (
+                anchor[position_fields[1]] - previous[position_fields[1]]
+            )
+            aligned = (
+                0 <= student_delta <= VERBATIM_ANCHOR_MAX_GAP
+                and source_delta >= 0
+                and abs(student_delta - source_delta)
+                <= VERBATIM_ALIGNMENT_TOLERANCE
+            )
+            if aligned:
+                current.append(anchor)
+            else:
+                groups.append(current)
+                current = [anchor]
+        groups.append(current)
+
+    return sorted(
+        groups,
+        key=lambda group: (
+            group[0]["student_start"],
+            group[0]["source_start"],
         ),
     )
-    groups = []
-    current = [ordered[0]]
-
-    for anchor in ordered[1:]:
-        previous = current[-1]
-        student_delta = anchor["student_start"] - previous["student_start"]
-        source_delta = anchor["source_start"] - previous["source_start"]
-        aligned = (
-            0 <= student_delta <= VERBATIM_ANCHOR_MAX_GAP
-            and source_delta >= 0
-            and abs(student_delta - source_delta)
-            <= VERBATIM_ALIGNMENT_TOLERANCE
-        )
-        if aligned:
-            current.append(anchor)
-        else:
-            groups.append(current)
-            current = [anchor]
-    groups.append(current)
-    return groups
 
 
 def prune_semantic_evidence(semantic_results):
@@ -1230,34 +1255,81 @@ def add_lexical_window_evidence(
     return added
 
 
-def get_fingerprints(text, k=25, step=5):
-    # Thay vì xóa hết, ta chỉ cần đảm bảo không có ký tự lạ ẩn nấp
-    # Nếu bạn đã tự tin về phần clean, chỉ cần lower và chuẩn hóa khoảng trắng
-    clean = text.lower().strip()
+def compact_lower_with_index_map(text):
+    compact_chars = []
+    index_map = []
+    for original_index, character in enumerate(text or ""):
+        for normalized_character in character.lower():
+            if normalized_character.isspace():
+                continue
+            compact_chars.append(normalized_character)
+            index_map.append(original_index)
+    return "".join(compact_chars), index_map
 
-    # Chúng ta vẫn nên giữ lại khoảng trắng đơn để phân tách từ
-    # nhưng để hash khớp nhau tuyệt đối, ta có thể hash chuỗi không trắng
-    hashable_str, index_map = compact_with_index_map(clean)
 
+def get_fingerprints(text, k=25, step=1):
+    hashable_str, index_map = compact_lower_with_index_map(text)
     fingerprints = {}
     if len(hashable_str) < k:
         return fingerprints, hashable_str
 
-    for i in range(0, len(hashable_str) - k + 1, step):
-        chunk = hashable_str[i:i+k]
-        h = hashlib.md5(chunk.encode()).hexdigest()
-        if h not in fingerprints:
-            # Lưu lại đoạn text có dấu cách để hiển thị cho người dùng dễ đọc
-            # Tìm cách ánh xạ vị trí i về text gốc (tương đối)
-            readable_start = index_map[i]
-            readable_end = index_map[i + k - 1] + 1
-            fingerprints[h] = {
-                "pos": i,
-                "student_start": readable_start,
-                "student_end": readable_end,
-                "match_text": clean[readable_start:readable_end],
-            }
+    for position in range(0, len(hashable_str) - k + 1, step):
+        chunk = hashable_str[position:position + k]
+        fingerprint_hash = hashlib.md5(
+            chunk.encode("utf-8")
+        ).hexdigest()
+        readable_start = index_map[position]
+        readable_end = index_map[position + k - 1] + 1
+        fingerprints.setdefault(fingerprint_hash, []).append({
+            "pos": position,
+            "student_start": readable_start,
+            "student_end": readable_end,
+            "match_text": text[readable_start:readable_end],
+            "length": k,
+        })
     return fingerprints, hashable_str
+
+
+def build_verified_fingerprint_anchors(
+        student_fingerprints,
+        student_compact,
+        source_fingerprints,
+        source_compact):
+    anchors = []
+    matched_student_positions = set()
+    common_hashes = set(student_fingerprints).intersection(
+        source_fingerprints)
+
+    for fingerprint_hash in common_hashes:
+        for student_info in student_fingerprints[fingerprint_hash]:
+            student_position = student_info["pos"]
+            window_length = student_info["length"]
+            student_window = student_compact[
+                student_position:student_position + window_length
+            ]
+            for source_info in source_fingerprints[fingerprint_hash]:
+                source_position = source_info["pos"]
+                if source_info["length"] != window_length:
+                    continue
+                source_window = source_compact[
+                    source_position:source_position + window_length
+                ]
+                if student_window != source_window:
+                    continue
+                anchors.append({
+                    "student_pos": student_position,
+                    "source_pos": source_position,
+                    "student_start": student_info["student_start"],
+                    "student_end": student_info["student_end"],
+                    "source_start": source_info["student_start"],
+                    "source_end": source_info["student_end"],
+                })
+                matched_student_positions.add(student_position)
+
+    anchors.sort(key=lambda item: (
+        item["student_pos"], item["source_pos"]
+    ))
+    return anchors, matched_student_positions
 
 
 def get_chunks(text, k=60, step=30):
@@ -1278,28 +1350,67 @@ def get_chunks(text, k=60, step=30):
     return chunks, clean
 
 
+def source_cache_key(ml_state, source_file):
+    namespace = ml_state.get("cache_namespace")
+    try:
+        hash(namespace)
+    except TypeError:
+        namespace = repr(namespace)
+    source_version = ml_state.get("source_versions", {}).get(source_file)
+    return namespace, source_file, source_version
+
+
+def source_collection_where(ml_state, source_file):
+    source_filter = {"source": source_file}
+    collection_filter = ml_state.get("collection_where")
+    if not collection_filter:
+        return source_filter
+    return {"$and": [source_filter, collection_filter]}
+
+
 def get_cached_semantic_source(ml_state, source_file):
     cache = ml_state.setdefault("semantic_source_cache", OrderedDict())
     if not isinstance(cache, OrderedDict):
         cache = OrderedDict(cache)
         ml_state["semantic_source_cache"] = cache
 
-    if source_file in cache:
-        cached = cache.pop(source_file)
-        cache[source_file] = cached
+    cache_key = source_cache_key(ml_state, source_file)
+    if cache_key in cache:
+        cached = cache.pop(cache_key)
+        cache[cache_key] = cached
         embeddings, documents, metadatas = cached
         return embeddings, documents, metadatas, True
 
     source_data = ml_state["collection"].get(
-        where={"source": source_file},
+        where=source_collection_where(ml_state, source_file),
         include=["embeddings", "documents", "metadatas"])
     embeddings = np.asarray(source_data["embeddings"], dtype=np.float32)
     documents = source_data["documents"]
     metadatas = source_data.get("metadatas") or [{} for _ in documents]
-    cache[source_file] = (embeddings, documents, metadatas)
+    cache[cache_key] = (embeddings, documents, metadatas)
     while len(cache) > SOURCE_CACHE_MAX_FILES:
         cache.popitem(last=False)
     return embeddings, documents, metadatas, False
+
+
+def get_cached_fingerprints(ml_state, source_file, source_raw):
+    cache = ml_state.setdefault("fingerprint_cache", OrderedDict())
+    if not isinstance(cache, OrderedDict):
+        cache = OrderedDict(cache)
+        ml_state["fingerprint_cache"] = cache
+
+    cache_key = source_cache_key(ml_state, source_file)
+    if cache_key in cache:
+        cached = cache.pop(cache_key)
+        cache[cache_key] = cached
+        fingerprints, compact_text = cached
+        return fingerprints, compact_text, True
+
+    fingerprints, compact_text = get_fingerprints(source_raw)
+    cache[cache_key] = (fingerprints, compact_text)
+    while len(cache) > SOURCE_CACHE_MAX_FILES:
+        cache.popitem(last=False)
+    return fingerprints, compact_text, False
 
 
 # def normalize_text(text):
@@ -1606,6 +1717,9 @@ def perform_plagiarism_scan(test_content, ml_state):
     # 1. Lấy fingerprints của sinh viên
     student_hashes, student_clean_str = get_fingerprints(test_content)
     student_hash_set = set(student_hashes.keys())
+    student_window_count = sum(
+        len(occurrences) for occurrences in student_hashes.values()
+    )
     student_fingerprint_seconds = (
         time.time() - student_fingerprint_started)
     source_fingerprint_seconds = 0.0
@@ -1640,48 +1754,35 @@ def perform_plagiarism_scan(test_content, ml_state):
                 continue
 
             # Tiến hành so khớp hashing
-            fingerprint_cache = ml_state.setdefault(
-                "fingerprint_cache", OrderedDict())
-            if not isinstance(fingerprint_cache, OrderedDict):
-                fingerprint_cache = OrderedDict(fingerprint_cache)
-                ml_state["fingerprint_cache"] = fingerprint_cache
-            if s in fingerprint_cache:
-                source_hashes_data = fingerprint_cache.pop(s)
-                fingerprint_cache[s] = source_hashes_data
-            else:
-                source_hashes_data, _ = get_fingerprints(source_raw)
-                fingerprint_cache[s] = source_hashes_data
-                while len(fingerprint_cache) > SOURCE_CACHE_MAX_FILES:
-                    fingerprint_cache.popitem(last=False)
-            source_hash_set = set(source_hashes_data.keys())
+            source_hashes_data, source_clean_str, _fingerprint_cache_hit = (
+                get_cached_fingerprints(ml_state, s, source_raw)
+            )
             source_fingerprint_seconds += (
                 time.time() - source_fingerprint_started)
 
-            # 4. Giao thoa
+            # 4. Use matching hashes only as candidates, then verify content.
             verbatim_matching_started = time.time()
-            common_hashes = student_hash_set.intersection(source_hash_set)
+            candidate_hashes = student_hash_set.intersection(
+                source_hashes_data)
+            anchors, matched_student_positions = (
+                build_verified_fingerprint_anchors(
+                    student_hashes,
+                    student_clean_str,
+                    source_hashes_data,
+                    source_clean_str,
+                )
+            )
 
             # 5. Tính toán Coverage
-            if len(student_hash_set) > 0:
-                v_score = (len(common_hashes) / len(student_hash_set)) * 100
+            if student_window_count > 0:
+                v_score = (
+                    len(matched_student_positions)
+                    / student_window_count
+                ) * 100
             else:
                 v_score = 0
 
             # 6. Thu thập bằng chứng
-            sorted_common = sorted(list(common_hashes),
-                                   key=lambda x: student_hashes[x]["pos"])
-
-            anchors = []
-            for h in sorted_common:
-                info = student_hashes[h]
-                source_info = source_hashes_data[h]
-                anchors.append({
-                    "student_start": info["student_start"],
-                    "student_end": info["student_end"],
-                    "source_start": source_info["student_start"],
-                    "source_end": source_info["student_end"],
-                })
-
             groups = [
                 group
                 for group in consolidate_verbatim_anchors(anchors)
@@ -1720,7 +1821,10 @@ def perform_plagiarism_scan(test_content, ml_state):
             verbatim_matching_seconds += (
                 time.time() - verbatim_matching_started)
             print(
-                f"Phase 4 Optimized Time for {s}: {time.time() - file_start_time:.2f}s | Matches: {len(common_hashes)}")
+                f"Phase 4 Optimized Time for {s}: "
+                f"{time.time() - file_start_time:.2f}s | "
+                f"Candidate hashes: {len(candidate_hashes)} | "
+                f"Verified anchors: {len(anchors)}")
 
         except Exception as e:
             print(f"Error in Phase 4 for {s}: {e}")

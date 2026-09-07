@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 import sys
 import time
@@ -79,6 +80,43 @@ DEFAULT_EVIDENCE_PROFILE = os.getenv(
         "default_evidence_profile", DETECTOR_DEFAULT_EVIDENCE_PROFILE),
 ).strip().lower()
 
+
+def resolve_candidate_sources(candidate_sources, available_sources):
+    if candidate_sources is None:
+        return None, None
+    if not bool(API_CONFIG.get("allow_oracle_candidate_sources", False)):
+        return None, JSONResponse(
+            status_code=403,
+            content={"error": "Oracle candidate sources are disabled"},
+        )
+
+    requested_sources = list(dict.fromkeys(
+        source.strip()
+        for source in candidate_sources.split(",")
+        if source.strip()
+    ))
+    if not requested_sources:
+        return None, JSONResponse(
+            status_code=400,
+            content={"error": "Candidate sources cannot be empty"},
+        )
+
+    available_sources = set(available_sources or ())
+    invalid_sources = [
+        source for source in requested_sources
+        if source not in available_sources
+    ]
+    if invalid_sources:
+        return None, JSONResponse(
+            status_code=400,
+            content={
+                "error": "Unknown candidate source",
+                "invalid_candidate_sources": invalid_sources,
+            },
+        )
+    return requested_sources, None
+
+
 ml_state = {}
 scan_lock = asyncio.Lock()
 
@@ -124,10 +162,18 @@ def corpus_refresh_signature(specs=None):
     ),)
 
 
-def build_text_index(documents, faculty, collection, chroma_client, where=None):
+def build_text_index(
+    documents,
+    faculty,
+    collection,
+    chroma_client,
+    where=None,
+    cache_namespace=None,
+):
     filenames = []
     contents = []
     corpus_texts = {}
+    source_versions = {}
     for document in documents:
         with open(
             document["path"], "r", encoding="utf-8", errors="ignore"
@@ -139,23 +185,37 @@ def build_text_index(documents, faculty, collection, chroma_client, where=None):
         filenames.append(source)
         contents.append(text)
         corpus_texts[source] = text
+        source_versions[source] = hashlib.sha256(
+            text.encode("utf-8", errors="ignore")
+        ).hexdigest()
     if not contents:
         return None
 
     vectorizer = TfidfVectorizer(
         stop_words="english", sublinear_tf=True)
     matrix = vectorizer.fit_transform(contents)
+    collection_metadata = collection.metadata or {}
+    if cache_namespace is None:
+        cache_namespace = (
+            faculty,
+            str(collection_metadata.get("index_version") or INDEX_VERSION),
+            id(collection),
+        )
     return {
         "faculty": faculty,
         "filenames": filenames,
         "filename_set": set(filenames),
         "corpus_texts": corpus_texts,
+        "source_versions": source_versions,
         "source_faculties": {source: faculty for source in filenames},
         "tfidf_vectorizer": vectorizer,
         "tfidf_matrix": matrix,
         "collection": collection,
         "chroma": chroma_client,
         "collection_where": where,
+        "cache_namespace": cache_namespace,
+        "semantic_source_cache": OrderedDict(),
+        "fingerprint_cache": OrderedDict(),
         "vector_db_chunks": collection.count(),
     }
 
@@ -187,7 +247,16 @@ def load_physical_faculty_indexes(specs):
         validate_collection(collection, expected_faculty=faculty)
         documents = discover_normalized_documents(spec["normalized_dir"])
         state = build_text_index(
-            documents, faculty, collection, chroma_client)
+            documents,
+            faculty,
+            collection,
+            chroma_client,
+            cache_namespace=(
+                faculty,
+                os.path.normcase(os.path.abspath(spec["db_path"])),
+                str(collection.metadata.get("index_version") or INDEX_VERSION),
+            ),
+        )
         if state is not None:
             state.update(spec)
             result[faculty] = state
@@ -211,7 +280,17 @@ def load_legacy_faculty_indexes():
     for faculty, documents in grouped.items():
         where = {"faculty": faculty} if faculty != DEFAULT_FACULTY else None
         state = build_text_index(
-            documents, faculty, collection, chroma_client, where=where)
+            documents,
+            faculty,
+            collection,
+            chroma_client,
+            where=where,
+            cache_namespace=(
+                faculty,
+                os.path.normcase(os.path.abspath(LEGACY_DB_PATH)),
+                str(collection.metadata.get("index_version") or INDEX_VERSION),
+            ),
+        )
         if state is not None:
             state.update({
                 "db_path": LEGACY_DB_PATH,
@@ -257,8 +336,8 @@ def refresh_corpus_state(force=False):
     ml_state["source_faculties"] = source_faculties
     ml_state["vector_db_chunks"] = total_chunks
     ml_state["corpus_refresh_signature"] = signature
-    ml_state["semantic_source_cache"] = OrderedDict()
-    ml_state["fingerprint_cache"] = OrderedDict()
+    ml_state.pop("semantic_source_cache", None)
+    ml_state.pop("fingerprint_cache", None)
     return True
 
 
@@ -396,6 +475,14 @@ async def scan(
             },
         )
 
+    candidate_state = faculty_indexes.get(requested_faculty, ml_state)
+    resolved_candidate_sources, candidate_error = resolve_candidate_sources(
+        candidate_sources,
+        candidate_state.get("filename_set", set()),
+    )
+    if candidate_error is not None:
+        return candidate_error
+
     extension = os.path.splitext(file.filename or "")[1].lower()
     if extension not in ALLOWED_EXTENSIONS:
         return JSONResponse(
@@ -440,16 +527,10 @@ async def scan(
         scan_state["faculty"] = requested_faculty
         scan_state["retrieval_strategy"] = requested_strategy
         scan_state["evidence_profile"] = requested_evidence_profile
-        if candidate_sources is not None:
-            requested_sources = [
-                source.strip()
-                for source in candidate_sources.split(",")
-                if source.strip()
-            ]
-            scan_state["forced_candidate_sources"] = [
-                source for source in dict.fromkeys(requested_sources)
-                if source in scan_state.get("filename_set", set())
-            ]
+        if resolved_candidate_sources is not None:
+            scan_state["forced_candidate_sources"] = (
+                resolved_candidate_sources
+            )
         if encode_batch_size is not None:
             scan_state["encode_batch_size"] = max(
                 4, min(int(encode_batch_size), 128))

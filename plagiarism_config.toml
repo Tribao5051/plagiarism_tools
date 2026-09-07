@@ -91,6 +91,7 @@ max_sources_per_region = 1
 default_retrieval_strategy = "shortlist"
 default_evidence_profile = "agreement"
 max_upload_mb = 50
+allow_oracle_candidate_sources = false
 
 [scheduler]
 interval_days = 30

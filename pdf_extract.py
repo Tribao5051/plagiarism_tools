@@ -115,6 +115,15 @@ def has_reference_heading(text):
     ))
 
 
+def split_before_reference_heading(text):
+    offset = 0
+    for line in (text or "").splitlines(keepends=True):
+        if has_reference_heading(line):
+            return text[:offset].rstrip(), True
+        offset += len(line)
+    return text, False
+
+
 # =========================
 # NOISE REMOVAL (Layout-level: page numbers, TOC, running headers)
 # =========================
@@ -229,15 +238,28 @@ def extract_university_content(input_data, filename=None, save_debug=True):
                     cutoff_page = i
                     break
 
-            for i in range(start_page, cutoff_page):
+            last_page = min(cutoff_page + 1, total_pages)
+            for i in range(start_page, last_page):
                 page = doc[i]
                 blocks = extract_blocks_with_recovered_spaces(page)
                 # Lọc Header/Footer (theo vị trí y trên trang) & Sắp xếp layout
                 filtered = [b for b in blocks if 40 < b[1] <
                             (page.rect.height - 40) and b[4].strip()]
                 sorted_blocks = sort_blocks(filtered, page.rect.width)
-                all_pages_text.append(
-                    "\n".join(b[4].strip() for b in sorted_blocks))
+                page_parts = []
+                for block in sorted_blocks:
+                    block_text = block[4].strip()
+                    if i == cutoff_page:
+                        block_text, found_heading = (
+                            split_before_reference_heading(block_text)
+                        )
+                        if block_text:
+                            page_parts.append(block_text)
+                        if found_heading:
+                            break
+                    else:
+                        page_parts.append(block_text)
+                all_pages_text.append("\n".join(page_parts))
 
             doc.close()
             final_text = remove_page_noise("\n\n".join(all_pages_text))
