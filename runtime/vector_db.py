@@ -51,9 +51,11 @@ from corpus_metadata import (
     normalize_source_key,
     load_json_file,
     discard_staged_normalized_document,
+    finalize_normalized_document_removal,
     publish_staged_normalized_document,
-    remove_normalized_document,
+    rollback_normalized_document_removal,
     stage_normalized_document,
+    stage_normalized_document_removal,
     write_json_file,
 )
 from pdf_extract import EXTRACTION_VERSION, extract_university_content
@@ -423,6 +425,28 @@ def restore_source_vectors(
         restored = collection.get(ids=snapshot["ids"], include=[])
         if set(restored.get("ids") or ()) != set(snapshot["ids"]):
             raise RuntimeError("Old Chroma source could not be fully restored")
+
+
+def restore_deleted_source_vectors(collection, snapshot, batch_size):
+    if not snapshot["ids"]:
+        return
+    current = collection.get(ids=snapshot["ids"], include=[])
+    current_ids = set(current.get("ids") or ())
+    missing_indexes = [
+        index for index, item_id in enumerate(snapshot["ids"])
+        if item_id not in current_ids
+    ]
+    for start in range(0, len(missing_indexes), batch_size):
+        indexes = missing_indexes[start:start + batch_size]
+        collection.add(
+            ids=[snapshot["ids"][index] for index in indexes],
+            embeddings=[snapshot["embeddings"][index] for index in indexes],
+            documents=[snapshot["documents"][index] for index in indexes],
+            metadatas=[snapshot["metadatas"][index] for index in indexes],
+        )
+    restored = collection.get(ids=snapshot["ids"], include=[])
+    if set(restored.get("ids") or ()) != set(snapshot["ids"]):
+        raise RuntimeError("Deleted Chroma source could not be fully restored")
 
 
 def publish_source_update(
@@ -852,21 +876,78 @@ def remove_stale_sources(
     }
     stale_sources = sorted(indexed_sources - current_sources)
 
-    if normalized_root is not None:
+    if not stale_sources:
+        return stale_sources
+
+    if normalized_root is None:
         for source in stale_sources:
-            managed_normalized_document_paths(normalized_root, source)
-
-    for source in stale_sources:
-        if normalized_root is not None:
-            remove_normalized_document(normalized_root, source)
-        collection.delete(where={"source": source})
-
-    if stale_sources:
+            collection.delete(where={"source": source})
         marker["source_keys"] = sorted(indexed_sources - set(stale_sources))
         marker["active_source_count"] = len(marker["source_keys"])
         marker["removed_sources"] = (
             int(marker.get("removed_sources") or 0) + len(stale_sources))
         write_json_file(marker_path, marker)
+        return stale_sources
+
+    for source in stale_sources:
+        managed_normalized_document_paths(normalized_root, source)
+
+    staged_removals = []
+    updated_marker = dict(marker)
+    updated_marker["source_keys"] = sorted(
+        indexed_sources - set(stale_sources))
+    updated_marker["active_source_count"] = len(
+        updated_marker["source_keys"])
+    updated_marker["removed_sources"] = (
+        int(marker.get("removed_sources") or 0) + len(stale_sources))
+
+    try:
+        for source in stale_sources:
+            snapshot = source_vector_snapshot(collection, source)
+            staged = stage_normalized_document_removal(
+                normalized_root, source)
+            transaction = {
+                "source": source,
+                "snapshot": snapshot,
+                "staged": staged,
+            }
+            staged_removals.append(transaction)
+            collection.delete(where={"source": source})
+            remaining = collection.get(
+                where={"source": source}, include=[]).get("ids") or ()
+            if remaining:
+                raise RuntimeError(
+                    f"Stale source still has {len(remaining)} vector records: "
+                    f"{source}")
+        write_json_file(marker_path, updated_marker)
+    except Exception as exc:
+        rollback_errors = []
+        for transaction in reversed(staged_removals):
+            source = transaction["source"]
+            snapshot = transaction["snapshot"]
+            try:
+                restore_deleted_source_vectors(
+                    collection, snapshot, MAX_CHROMA_BATCH)
+            except Exception as rollback_exc:
+                rollback_errors.append(
+                    f"vector {source}: {rollback_exc}")
+            try:
+                rollback_normalized_document_removal(transaction["staged"])
+            except Exception as rollback_exc:
+                rollback_errors.append(
+                    f"text {source}: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(
+                f"{exc}; stale cleanup rollback failed: "
+                + "; ".join(rollback_errors)
+            ) from exc
+        raise
+
+    for transaction in staged_removals:
+        cleanup_errors = finalize_normalized_document_removal(
+            transaction["staged"])
+        for cleanup_error in cleanup_errors:
+            print(f" > Warning: stale cleanup backup remains: {cleanup_error}")
     return stale_sources
 
 

@@ -912,6 +912,31 @@ class RuntimeSelfTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "repeated page"):
                 client.list_bitstreams({"uuid": "bundle-1"})
 
+    def test_dspace_bitstreams_reject_skipped_page_number(self):
+        client = DSpaceClient("https://example.invalid/server")
+
+        def fake_get_json(_url, params=None):
+            requested_page = int((params or {}).get("page", 0))
+            returned_page = 0 if requested_page == 0 else 2
+            return {
+                "_embedded": {
+                    "bitstreams": [{
+                        "uuid": f"bitstream-page-{returned_page}",
+                        "name": "document.pdf",
+                    }]
+                },
+                "page": {
+                    "number": returned_page,
+                    "size": 1,
+                    "totalPages": 2,
+                    "totalElements": 2,
+                },
+            }
+
+        with patch.object(client, "get_json", side_effect=fake_get_json):
+            with self.assertRaisesRegex(RuntimeError, "expected page 1"):
+                client.list_bitstreams({"uuid": "bundle-1"})
+
     def test_dspace_second_bitstream_page_failure_blocks_cleanup(self):
         class FailingSecondPageClient(DSpaceClient):
             def __init__(self, *args, **kwargs):
@@ -1252,6 +1277,128 @@ class RuntimeSelfTests(unittest.TestCase):
                 updated_marker = json.load(handle)
             self.assertEqual(updated_marker["source_keys"], ["current.pdf"])
 
+    def test_stale_cleanup_delete_failure_restores_published_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            normalized_root = os.path.join(root, "normalized")
+            write_normalized_document(
+                normalized_root, "old.pdf", "old text", {"faculty": "cs"})
+            marker = os.path.join(root, "corpus_index.json")
+            with open(marker, "w", encoding="utf-8") as handle:
+                json.dump({"source_keys": ["old.pdf"]}, handle)
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old text",
+                    "metadata": {"source": "old.pdf"},
+                }
+            })
+
+            with (
+                patch.object(
+                    collection,
+                    "delete",
+                    side_effect=RuntimeError("simulated delete failure"),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "simulated delete failure"
+                ),
+            ):
+                remove_stale_sources(
+                    collection,
+                    [],
+                    marker,
+                    normalized_root=normalized_root,
+                )
+
+            text_path = normalized_text_path(normalized_root, "old.pdf")
+            self.assertTrue(os.path.isfile(text_path))
+            self.assertTrue(os.path.isfile(metadata_sidecar_path(text_path)))
+            self.assertIn("old-id", collection.records)
+            with open(marker, "r", encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["source_keys"], ["old.pdf"])
+
+    def test_stale_cleanup_partial_delete_failure_restores_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            normalized_root = os.path.join(root, "normalized")
+            write_normalized_document(
+                normalized_root, "old.pdf", "old text", {"faculty": "cs"})
+            marker = os.path.join(root, "corpus_index.json")
+            with open(marker, "w", encoding="utf-8") as handle:
+                json.dump({"source_keys": ["old.pdf"]}, handle)
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old text",
+                    "metadata": {"source": "old.pdf"},
+                }
+            })
+            real_delete = collection.delete
+
+            def delete_then_fail(*args, **kwargs):
+                real_delete(*args, **kwargs)
+                raise RuntimeError("simulated partial delete failure")
+
+            with (
+                patch.object(
+                    collection, "delete", side_effect=delete_then_fail),
+                self.assertRaisesRegex(
+                    RuntimeError, "simulated partial delete failure"
+                ),
+            ):
+                remove_stale_sources(
+                    collection,
+                    [],
+                    marker,
+                    normalized_root=normalized_root,
+                )
+
+            text_path = normalized_text_path(normalized_root, "old.pdf")
+            self.assertTrue(os.path.isfile(text_path))
+            self.assertTrue(os.path.isfile(metadata_sidecar_path(text_path)))
+            self.assertIn("old-id", collection.records)
+            with open(marker, "r", encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["source_keys"], ["old.pdf"])
+
+    def test_stale_cleanup_marker_failure_restores_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            normalized_root = os.path.join(root, "normalized")
+            write_normalized_document(
+                normalized_root, "old.pdf", "old text", {"faculty": "cs"})
+            marker = os.path.join(root, "corpus_index.json")
+            with open(marker, "w", encoding="utf-8") as handle:
+                json.dump({"source_keys": ["old.pdf"]}, handle)
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old text",
+                    "metadata": {"source": "old.pdf"},
+                }
+            })
+
+            with (
+                patch.object(
+                    vector_db,
+                    "write_json_file",
+                    side_effect=OSError("simulated marker write failure"),
+                ),
+                self.assertRaisesRegex(
+                    OSError, "simulated marker write failure"
+                ),
+            ):
+                remove_stale_sources(
+                    collection,
+                    [],
+                    marker,
+                    normalized_root=normalized_root,
+                )
+
+            text_path = normalized_text_path(normalized_root, "old.pdf")
+            self.assertTrue(os.path.isfile(text_path))
+            self.assertTrue(os.path.isfile(metadata_sidecar_path(text_path)))
+            self.assertIn("old-id", collection.records)
+            with open(marker, "r", encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["source_keys"], ["old.pdf"])
+
     def test_stale_cleanup_rejects_paths_outside_managed_normalized_root(self):
         with tempfile.TemporaryDirectory() as root:
             normalized_root = os.path.join(root, "normalized")
@@ -1503,6 +1650,54 @@ class RuntimeSelfTests(unittest.TestCase):
                 if ".stage-" in name or ".backup-" in name
             ]
             self.assertEqual(leftovers, [])
+
+    def test_backup_cleanup_failure_keeps_new_vector_and_text_published(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "paper.pdf", "old text", {"faculty": "old"})
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old chunk",
+                    "metadata": {"source": "paper.pdf", "chunk_count": 1},
+                }
+            })
+            real_remove = corpus_metadata.os.remove
+
+            def fail_backup_cleanup(path):
+                if ".backup-" in path:
+                    raise OSError("simulated backup cleanup failure")
+                return real_remove(path)
+
+            with patch.object(
+                corpus_metadata.os,
+                "remove",
+                side_effect=fail_backup_cleanup,
+            ):
+                vector_db.publish_source_update(
+                    collection=collection,
+                    normalized_root=root,
+                    source="paper.pdf",
+                    text="new text",
+                    source_metadata={"faculty": "new"},
+                    ids=["new-id"],
+                    embeddings=[[2.0]],
+                    documents=["new chunk"],
+                    metadatas=[{
+                        "source": "paper.pdf",
+                        "chunk_count": 1,
+                    }],
+                    batch_size=10,
+                )
+
+            self.assertEqual(set(collection.records), {"new-id"})
+            text_path = normalized_text_path(root, "paper.pdf")
+            with open(text_path, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "new text")
+            with open(
+                metadata_sidecar_path(text_path), "r", encoding="utf-8"
+            ) as handle:
+                self.assertEqual(json.load(handle)["faculty"], "new")
 
     def test_successful_source_publish_replaces_text_and_vector_together(self):
         with tempfile.TemporaryDirectory() as root:

@@ -231,6 +231,10 @@ class DSpaceClient:
                 raise DSpaceTraversalError(
                     f"Pagination repeated page number {page_number}: "
                     f"{request_key}")
+            if page_number != expected_page:
+                raise DSpaceTraversalError(
+                    f"Pagination returned page {page_number}; expected page "
+                    f"{expected_page}: {request_key}")
             seen_page_numbers.add(page_number)
 
             page_uuids = []

@@ -144,6 +144,68 @@ def remove_normalized_document(normalized_root, source_key):
     return removed
 
 
+def stage_normalized_document_removal(normalized_root, source_key):
+    text_path, sidecar_path = managed_normalized_document_paths(
+        normalized_root, source_key)
+    token = uuid.uuid4().hex
+    staged_paths = {}
+    staged = {
+        "managed_root": os.path.realpath(os.path.abspath(normalized_root)),
+        "text_path": text_path,
+        "staged_paths": staged_paths,
+    }
+    try:
+        for target in (text_path, sidecar_path):
+            if not os.path.isfile(target):
+                continue
+            staged_path = f"{target}.delete-{token}"
+            os.replace(target, staged_path)
+            staged_paths[target] = staged_path
+    except Exception:
+        rollback_normalized_document_removal(staged)
+        raise
+    return staged
+
+
+def rollback_normalized_document_removal(staged):
+    errors = []
+    for target, staged_path in reversed(list(
+            staged.get("staged_paths", {}).items())):
+        if not os.path.isfile(staged_path):
+            continue
+        try:
+            if os.path.exists(target):
+                raise RuntimeError(
+                    f"Cannot restore normalized artifact over {target}")
+            os.replace(staged_path, target)
+        except Exception as exc:
+            errors.append(f"{target}: {exc}")
+    if errors:
+        raise RuntimeError(
+            "Could not restore normalized artifacts: " + "; ".join(errors))
+
+
+def finalize_normalized_document_removal(staged):
+    cleanup_errors = []
+    for staged_path in staged.get("staged_paths", {}).values():
+        if not os.path.isfile(staged_path):
+            continue
+        try:
+            os.remove(staged_path)
+        except OSError as exc:
+            cleanup_errors.append(f"{staged_path}: {exc}")
+
+    managed_root = staged.get("managed_root")
+    current = os.path.dirname(staged.get("text_path", ""))
+    while managed_root and current and current != managed_root:
+        try:
+            os.rmdir(current)
+        except OSError:
+            break
+        current = os.path.dirname(current)
+    return cleanup_errors
+
+
 def stage_normalized_document(normalized_root, source_key, text, metadata):
     text_path, sidecar_path = managed_normalized_document_paths(
         normalized_root, source_key)
@@ -209,7 +271,12 @@ def publish_staged_normalized_document(staged):
     else:
         for backup in backups.values():
             if os.path.isfile(backup):
-                os.remove(backup)
+                try:
+                    os.remove(backup)
+                except OSError:
+                    # The new pair is already committed. A backup cleanup
+                    # failure must not make the vector layer roll back alone.
+                    pass
         return text_path
     finally:
         discard_staged_normalized_document(staged)
