@@ -3,6 +3,7 @@ import json
 import os
 import re
 import unicodedata
+import uuid
 
 
 SUPPORTED_CORPUS_EXTENSIONS = {".pdf", ".txt"}
@@ -100,6 +101,118 @@ def load_source_metadata(root_dir, source_key, default_faculty=None):
 def normalized_text_path(normalized_root, source_key):
     source_key = normalize_source_key(source_key)
     return os.path.join(normalized_root, *source_key.split("/")) + ".txt"
+
+
+def managed_normalized_document_paths(normalized_root, source_key):
+    raw_source = str(source_key).replace("\\", "/")
+    drive, _tail = os.path.splitdrive(raw_source)
+    parts = raw_source.split("/")
+    if (
+        not raw_source
+        or drive
+        or os.path.isabs(raw_source)
+        or any(part in ("", ".", "..") for part in parts)
+    ):
+        raise ValueError(f"Unsafe normalized source path: {source_key}")
+
+    managed_root = os.path.realpath(os.path.abspath(normalized_root))
+    text_path = os.path.realpath(
+        os.path.abspath(os.path.join(managed_root, *parts) + ".txt"))
+    if os.path.commonpath([managed_root, text_path]) != managed_root:
+        raise ValueError(
+            f"Normalized source is outside managed root: {source_key}")
+    return text_path, metadata_sidecar_path(text_path)
+
+
+def remove_normalized_document(normalized_root, source_key):
+    text_path, sidecar_path = managed_normalized_document_paths(
+        normalized_root, source_key)
+    removed = []
+    for path in (text_path, sidecar_path):
+        if os.path.isfile(path):
+            os.remove(path)
+            removed.append(path)
+
+    managed_root = os.path.realpath(os.path.abspath(normalized_root))
+    current = os.path.dirname(text_path)
+    while current != managed_root:
+        try:
+            os.rmdir(current)
+        except OSError:
+            break
+        current = os.path.dirname(current)
+    return removed
+
+
+def stage_normalized_document(normalized_root, source_key, text, metadata):
+    text_path, sidecar_path = managed_normalized_document_paths(
+        normalized_root, source_key)
+    os.makedirs(os.path.dirname(text_path), exist_ok=True)
+    token = uuid.uuid4().hex
+    staged_text_path = f"{text_path}.stage-{token}"
+    staged_sidecar_path = f"{sidecar_path}.stage-{token}"
+    normalized_metadata = dict(metadata or {})
+    normalized_metadata["source"] = normalize_source_key(source_key)
+    normalized_metadata["faculty"] = infer_faculty(
+        source_key, normalized_metadata)
+    staged = {
+        "text_path": text_path,
+        "sidecar_path": sidecar_path,
+        "staged_text_path": staged_text_path,
+        "staged_sidecar_path": staged_sidecar_path,
+        "token": token,
+    }
+    try:
+        with open(staged_text_path, "x", encoding="utf-8") as handle:
+            handle.write(text)
+        write_json_file(staged_sidecar_path, normalized_metadata)
+    except Exception:
+        discard_staged_normalized_document(staged)
+        raise
+    return staged
+
+
+def discard_staged_normalized_document(staged):
+    for key in ("staged_text_path", "staged_sidecar_path"):
+        path = staged.get(key)
+        if path and os.path.isfile(path):
+            os.remove(path)
+
+
+def publish_staged_normalized_document(staged):
+    text_path = staged["text_path"]
+    sidecar_path = staged["sidecar_path"]
+    staged_text_path = staged["staged_text_path"]
+    staged_sidecar_path = staged["staged_sidecar_path"]
+    token = staged["token"]
+    backups = {
+        text_path: f"{text_path}.backup-{token}",
+        sidecar_path: f"{sidecar_path}.backup-{token}",
+    }
+    moved_targets = set()
+    try:
+        for target, backup in backups.items():
+            if os.path.isfile(target):
+                os.replace(target, backup)
+        os.replace(staged_text_path, text_path)
+        moved_targets.add(text_path)
+        os.replace(staged_sidecar_path, sidecar_path)
+        moved_targets.add(sidecar_path)
+    except Exception:
+        for target in moved_targets:
+            if os.path.isfile(target):
+                os.remove(target)
+        for target, backup in backups.items():
+            if os.path.isfile(backup):
+                os.replace(backup, target)
+        raise
+    else:
+        for backup in backups.values():
+            if os.path.isfile(backup):
+                os.remove(backup)
+        return text_path
+    finally:
+        discard_staged_normalized_document(staged)
 
 
 def write_normalized_document(normalized_root, source_key, text, metadata):

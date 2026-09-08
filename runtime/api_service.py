@@ -50,6 +50,7 @@ from corpus_metadata import (
     discover_normalized_documents,
     load_json_file,
     normalize_faculty,
+    normalize_source_key,
 )
 from detection_module_diff_p4 import (
     DEFAULT_EVIDENCE_PROFILE as DETECTOR_DEFAULT_EVIDENCE_PROFILE,
@@ -183,19 +184,27 @@ def build_text_index(
     chroma_client,
     where=None,
     cache_namespace=None,
+    active_sources=None,
 ):
+    active_sources = (
+        {normalize_source_key(source) for source in active_sources}
+        if active_sources is not None
+        else None
+    )
     filenames = []
     contents = []
     corpus_texts = {}
     source_versions = {}
     for document in documents:
+        source = normalize_source_key(document["source"])
+        if active_sources is not None and source not in active_sources:
+            continue
         with open(
             document["path"], "r", encoding="utf-8", errors="ignore"
         ) as handle:
             text = handle.read()
         if not text.strip():
             continue
-        source = document["source"]
         filenames.append(source)
         contents.append(text)
         corpus_texts[source] = text
@@ -277,11 +286,16 @@ def load_physical_faculty_indexes(specs):
             marker_path=spec["marker_path"],
         )
         documents = discover_normalized_documents(spec["normalized_dir"])
+        active_sources = set(
+            load_json_file(spec["marker_path"], default={}).get(
+                "source_keys") or ()
+        )
         state = build_text_index(
             documents,
             faculty,
             collection,
             chroma_client,
+            active_sources=active_sources,
             cache_namespace=(
                 faculty,
                 os.path.normcase(os.path.abspath(spec["db_path"])),
@@ -305,8 +319,14 @@ def load_legacy_faculty_indexes():
     collection = chroma_client.get_collection(
         name=INDEXING_CONFIG["collection_name"])
     validate_collection(collection, marker_path=LEGACY_MARKER_PATH)
+    active_sources = set(
+        load_json_file(LEGACY_MARKER_PATH, default={}).get(
+            "source_keys") or ()
+    )
     grouped = {}
     for document in discover_normalized_documents(LEGACY_CORPUS_DIR):
+        if normalize_source_key(document["source"]) not in active_sources:
+            continue
         grouped.setdefault(document["faculty"], []).append(document)
     result = {}
     for faculty, documents in grouped.items():
@@ -317,6 +337,7 @@ def load_legacy_faculty_indexes():
             collection,
             chroma_client,
             where=where,
+            active_sources=active_sources,
             cache_namespace=(
                 faculty,
                 os.path.normcase(os.path.abspath(LEGACY_DB_PATH)),

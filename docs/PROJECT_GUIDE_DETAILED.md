@@ -227,7 +227,40 @@ cleanup chỉ chạy khi đây là full sync, không phải dry-run, toàn bộ 
 hoàn tất và không có lỗi. Manifest lưu trạng thái lần sync cuối để lần chạy sau
 có thể kiểm tra nguyên nhân; phạm vi community/collection không thay đổi.
 
-**Commit:** commit Task 8 có message `fix: complete dspace pagination before cleanup`.
+**Commit:** `178bf66`.
+
+### Task 9 - Đồng bộ vòng đời vector và normalized TXT
+
+**Trước khi sửa:** nguồn stale chỉ bị xóa khỏi Chroma, nên TXT/sidecar còn lại
+vẫn có thể được API nạp. Với nguồn thay đổi, vector cũ bị xóa và TXT mới được
+ghi ngay ở bước extraction, trước khi embedding và Chroma write thành công. Lỗi
+ở bước sau vì vậy có thể để lại text mới nhưng thiếu vector, hoặc làm mất bản
+vector hợp lệ cũ.
+
+**Bước 1 - cleanup nguồn đã xóa:** chỉ những source có trong marker nhưng không
+còn trong corpus hiện tại mới được xem là đã xác nhận xóa. Tool kiểm tra trước
+đường dẫn bằng `realpath` và `commonpath`, sau đó chỉ xóa đúng normalized TXT,
+sidecar tương ứng và vector theo source. Tool chỉ dùng `os.remove` cho hai file
+đã xác minh và `os.rmdir` cho thư mục cha đã rỗng; không xóa đệ quy corpus.
+Marker được cập nhật để source không còn trong danh sách active. API chỉ nạp
+normalized document có source nằm trong danh sách active này, nên file orphan
+không thể xuất hiện trong scan.
+
+**Bước 2 - publish bản thay thế:** extraction/chunking chỉ trả dữ liệu trong RAM,
+không ghi đè TXT. Sau embedding, writer snapshot toàn bộ vector cũ, stage TXT và
+sidecar bằng tên tạm, ghi vector mới theo batch và kiểm tra đủ ID. Chỉ sau khi
+vector đạt kiểm tra, cặp TXT/sidecar mới được thay thế. Nếu staging, Chroma add,
+verification hoặc file replace lỗi, tool xóa phần mới và khôi phục snapshot
+vector cùng hai file cũ. `source_keys` cuối chỉ thêm source có trạng thái
+`success` hoặc `skipped`; source mới thất bại không được publish, còn source cũ
+hợp lệ được giữ active khi bản thay thế thất bại.
+
+Đây là transaction có cơ chế bù trừ giữa filesystem và Chroma, không phải
+distributed transaction của database. Nếu chính thao tác rollback cũng gặp lỗi
+I/O/Chroma nghiêm trọng, lỗi tổng hợp được báo ra để người vận hành can thiệp;
+không được coi lần chạy đó là thành công.
+
+**Commit:** commit Task 9 có message `fix: synchronize vector and text lifecycle`.
 
 ## 6. Cách chạy sau khi sắp xếp
 
@@ -297,6 +330,12 @@ Sau Task 8, toàn bộ 69 test đạt. Năm regression test mới kiểm tra đ�
 bitstream qua hai trang, UUID lặp không nhân đôi, bundle pagination đọc hết,
 page/next-link lặp bị chặn và lỗi trang thứ hai không xóa file local.
 
+Sau Task 9, toàn bộ 78 test đạt. Chín regression test mới kiểm tra cleanup đủ
+vector/TXT/sidecar/active key, chặn đường dẫn ngoài thư mục quản lý, API chỉ đọc
+source active, extraction không publish sớm, nguồn đổi không mất vector cũ,
+rollback khi Chroma hoặc file replace lỗi, và publish thành công cập nhật đồng
+thời text với vector.
+
 ## 9. Giới hạn còn lại
 
 - Chưa có raw-text offset mapping nên chưa có character precision đáng tin cậy.
@@ -315,4 +354,5 @@ page/next-link lặp bị chặn và lỗi trang thứ hai không xóa file loca
 - `f895a26`: Task 6.
 - `2047859`: tổ chức lại runtime/tests/performance/docs/test_data.
 - `f76f23b`: Task 7.
-- Task 8: commit có message `fix: complete dspace pagination before cleanup`.
+- `178bf66`: Task 8.
+- Task 9: commit có message `fix: synchronize vector and text lifecycle`.

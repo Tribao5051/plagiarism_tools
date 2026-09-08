@@ -45,12 +45,16 @@ from corpus_metadata import (
     discover_corpus_files,
     file_sha256,
     load_source_metadata,
+    managed_normalized_document_paths,
     metadata_sha256,
     normalize_faculty,
     normalize_source_key,
     load_json_file,
+    discard_staged_normalized_document,
+    publish_staged_normalized_document,
+    remove_normalized_document,
+    stage_normalized_document,
     write_json_file,
-    write_normalized_document,
 )
 from pdf_extract import EXTRACTION_VERSION, extract_university_content
 from chromadb.config import Settings
@@ -327,14 +331,6 @@ def extract_and_chunk(fname, target_dir, existing_sources):
                 "chunk_count": 0,
             }
 
-        # Preserve the original source key and faculty in a normalized sidecar.
-        write_normalized_document(
-            NORMALIZED_CHECK_DIR,
-            fname,
-            content,
-            source_metadata,
-        )
-
         chunker, refinery = get_thread_chunk_tools()
         if CHUNKING_STRATEGY == "token":
             chunk_texts, chunk_spans = chunk_text_with_native_spans(
@@ -358,6 +354,7 @@ def extract_and_chunk(fname, target_dir, existing_sources):
 
         return {
             "fname": fname,
+            "content": content,
             "chunks": chunk_texts,
             "chunk_spans": chunk_spans,
             "content_hash": content_hash,
@@ -381,6 +378,112 @@ def extract_and_chunk(fname, target_dir, existing_sources):
         }
 
 
+def source_vector_snapshot(collection, source):
+    result = collection.get(
+        where={"source": source},
+        include=["embeddings", "documents", "metadatas"],
+    )
+    ids = list(result.get("ids") or ())
+
+    def values(name):
+        value = result.get(name)
+        return [] if value is None else list(value)
+
+    embeddings = values("embeddings")
+    documents = values("documents")
+    metadatas = values("metadatas")
+    lengths = {len(ids), len(embeddings), len(documents), len(metadatas)}
+    if len(lengths) != 1:
+        raise RuntimeError(
+            f"Cannot snapshot {source}: inconsistent Chroma record lengths")
+    return {
+        "ids": ids,
+        "embeddings": embeddings,
+        "documents": documents,
+        "metadatas": metadatas,
+    }
+
+
+def restore_source_vectors(
+    collection, snapshot, replacement_ids, batch_size
+):
+    ids_to_remove = list(dict.fromkeys(
+        list(replacement_ids) + list(snapshot["ids"])))
+    if ids_to_remove:
+        collection.delete(ids=ids_to_remove)
+    for start in range(0, len(snapshot["ids"]), batch_size):
+        end = start + batch_size
+        collection.add(
+            ids=snapshot["ids"][start:end],
+            embeddings=snapshot["embeddings"][start:end],
+            documents=snapshot["documents"][start:end],
+            metadatas=snapshot["metadatas"][start:end],
+        )
+    if snapshot["ids"]:
+        restored = collection.get(ids=snapshot["ids"], include=[])
+        if set(restored.get("ids") or ()) != set(snapshot["ids"]):
+            raise RuntimeError("Old Chroma source could not be fully restored")
+
+
+def publish_source_update(
+    collection,
+    normalized_root,
+    source,
+    text,
+    source_metadata,
+    ids,
+    embeddings,
+    documents,
+    metadatas,
+    batch_size,
+):
+    ids = list(ids)
+    embeddings = list(embeddings)
+    documents = list(documents)
+    metadatas = list(metadatas)
+    lengths = {len(ids), len(embeddings), len(documents), len(metadatas)}
+    if len(lengths) != 1 or not ids or batch_size <= 0:
+        raise ValueError("A source update requires equal, non-empty vector data")
+
+    snapshot = source_vector_snapshot(collection, source)
+    staged = stage_normalized_document(
+        normalized_root, source, text, source_metadata)
+    vector_mutation_started = False
+    try:
+        vector_mutation_started = True
+        if snapshot["ids"]:
+            collection.delete(ids=snapshot["ids"])
+        for start in range(0, len(ids), batch_size):
+            end = start + batch_size
+            collection.add(
+                ids=ids[start:end],
+                embeddings=embeddings[start:end],
+                documents=documents[start:end],
+                metadatas=metadatas[start:end],
+            )
+        indexed = collection.get(ids=ids, include=[])
+        if set(indexed.get("ids") or ()) != set(ids):
+            raise RuntimeError(
+                f"post-write verification failed: "
+                f"{len(indexed.get('ids') or ())}/{len(ids)} chunks")
+        publish_staged_normalized_document(staged)
+    except Exception as exc:
+        rollback_error = None
+        if vector_mutation_started:
+            try:
+                restore_source_vectors(
+                    collection, snapshot, ids, batch_size)
+            except Exception as rollback_exc:
+                rollback_error = rollback_exc
+        discard_staged_normalized_document(staged)
+        if rollback_error is not None:
+            raise RuntimeError(
+                f"{exc}; source rollback failed: {rollback_error}"
+            ) from exc
+        raise
+    return len(ids)
+
+
 def chroma_write_worker(write_queue, collection, result_log, stats):
     """Write CPU-resident embeddings while the GPU encodes the next batch."""
     while True:
@@ -394,6 +497,7 @@ def chroma_write_worker(write_queue, collection, result_log, stats):
             write_started_at = time.time()
             for (
                 fname,
+                content,
                 texts,
                 spans,
                 content_hash,
@@ -438,24 +542,26 @@ def chroma_write_worker(write_queue, collection, result_log, stats):
 
                 try:
                     file_embeds_list = file_embeddings.tolist()
-                    for index in range(0, chunk_count, MAX_CHROMA_BATCH):
-                        collection.add(
-                            ids=file_ids[index:index + MAX_CHROMA_BATCH],
-                            embeddings=file_embeds_list[
-                                index:index + MAX_CHROMA_BATCH],
-                            documents=texts[index:index + MAX_CHROMA_BATCH],
-                            metadatas=file_metas[index:index + MAX_CHROMA_BATCH]
-                        )
-                    indexed = collection.get(
-                        where={"source": fname},
-                        include=[],
+                    normalized_metadata = dict(source_metadata)
+                    normalized_metadata.update({
+                        "content_sha256": content_hash,
+                        "file_sha256": file_hash,
+                        "source_metadata_sha256": source_metadata_hash,
+                        "index_version": INDEX_VERSION,
+                        "index_config_hash": INDEX_CONFIG_HASH,
+                    })
+                    publish_source_update(
+                        collection=collection,
+                        normalized_root=NORMALIZED_CHECK_DIR,
+                        source=fname,
+                        text=content,
+                        source_metadata=normalized_metadata,
+                        ids=file_ids,
+                        embeddings=file_embeds_list,
+                        documents=texts,
+                        metadatas=file_metas,
+                        batch_size=MAX_CHROMA_BATCH,
                     )
-                    indexed_count = len(indexed.get("ids", ()))
-                    if indexed_count != chunk_count:
-                        raise RuntimeError(
-                            f"post-write verification failed: "
-                            f"{indexed_count}/{chunk_count} chunks"
-                        )
                     allocated_encode_seconds = (
                         payload["encode_seconds"]
                         * chunk_count
@@ -478,15 +584,10 @@ def chroma_write_worker(write_queue, collection, result_log, stats):
                             allocated_encode_seconds, 3),
                     })
                 except Exception as exc:
-                    try:
-                        collection.delete(where={"source": fname})
-                    except Exception as rollback_exc:
-                        exc = RuntimeError(
-                            f"{exc}; rollback failed: {rollback_exc}")
                     result_log.append({
                         "fname": fname,
                         "status": "error",
-                        "message": f"Chroma write failed: {exc}",
+                        "message": f"Source publish failed: {exc}",
                         "chunk_count": chunk_count,
                         "faculty": provenance["faculty"],
                         "collection_uuid": provenance.get(
@@ -556,6 +657,7 @@ def gpu_encode_worker(work_queue, write_queue, model, result_log, stats, stop_ev
             elapsed = time.time() - t0
             for (
                 fname,
+                _content,
                 texts,
                 _spans,
                 _content_hash,
@@ -632,7 +734,8 @@ def gpu_encode_worker(work_queue, write_queue, model, result_log, stats, stop_ev
         try:
             if item["status"] == "ready":
                 pending_fname_chunks.append(
-                    (item["fname"], item["chunks"], item["chunk_spans"],
+                    (item["fname"], item["content"], item["chunks"],
+                     item["chunk_spans"],
                      item["content_hash"], item["file_sha256"],
                      item["source_metadata"],
                      item["source_metadata_sha256"],
@@ -663,7 +766,9 @@ def gpu_encode_worker(work_queue, write_queue, model, result_log, stats, stop_ev
     flush()
 
 
-def load_existing_sources(collection, files, target_dir=None):
+def load_existing_sources(
+    collection, files, target_dir=None, normalized_root=None
+):
     existing_sources = set()
     for fname in files:
         fname = normalize_source_key(fname)
@@ -700,8 +805,20 @@ def load_existing_sources(collection, files, target_dir=None):
                     indexed_metadata_hash
                     and indexed_metadata_hash != current_metadata_hash
                 ):
-                    print(f" > Changed source {fname}; rebuilding.")
-                    collection.delete(where={"source": fname})
+                    print(
+                        f" > Changed source {fname}; staging replacement "
+                        "while keeping the published version.")
+                    continue
+            if normalized_root is not None:
+                text_path, sidecar_path = managed_normalized_document_paths(
+                    normalized_root, fname)
+                if not (
+                    os.path.isfile(text_path)
+                    and os.path.isfile(sidecar_path)
+                ):
+                    print(
+                        f" > Missing normalized artifacts for {fname}; "
+                        "staging replacement.")
                     continue
             expected_count = metadata.get("chunk_count")
             if expected_count is None:
@@ -718,19 +835,38 @@ def load_existing_sources(collection, files, target_dir=None):
             else:
                 print(
                     f" > Incomplete source {fname}: "
-                    f"{len(all_ids)}/{expected_count}; rebuilding.")
-                collection.delete(where={"source": fname})
+                    f"{len(all_ids)}/{expected_count}; staging replacement "
+                    "without deleting the current records.")
         except Exception as exc:
             print(f" > Warning: Could not check existing source {fname}: {exc}")
     return existing_sources
 
 
-def remove_stale_sources(collection, current_files, marker_path):
+def remove_stale_sources(
+    collection, current_files, marker_path, normalized_root=None
+):
     marker = load_json_file(marker_path, default={})
     indexed_sources = set(marker.get("source_keys") or ())
-    stale_sources = sorted(indexed_sources - set(current_files))
+    current_sources = {
+        normalize_source_key(source) for source in current_files
+    }
+    stale_sources = sorted(indexed_sources - current_sources)
+
+    if normalized_root is not None:
+        for source in stale_sources:
+            managed_normalized_document_paths(normalized_root, source)
+
     for source in stale_sources:
+        if normalized_root is not None:
+            remove_normalized_document(normalized_root, source)
         collection.delete(where={"source": source})
+
+    if stale_sources:
+        marker["source_keys"] = sorted(indexed_sources - set(stale_sources))
+        marker["active_source_count"] = len(marker["source_keys"])
+        marker["removed_sources"] = (
+            int(marker.get("removed_sources") or 0) + len(stale_sources))
+        write_json_file(marker_path, marker)
     return stale_sources
 
 
@@ -936,12 +1072,24 @@ def main(argv=None):
 
     files = discover_corpus_files(target_dir)
     stale_sources = remove_stale_sources(
-        collection, files, REFRESH_MARKER_PATH)
+        collection,
+        files,
+        REFRESH_MARKER_PATH,
+        normalized_root=NORMALIZED_CHECK_DIR,
+    )
     if stale_sources:
         print(f" > Removed {len(stale_sources)} stale source(s).")
+    published_sources = set(
+        load_json_file(REFRESH_MARKER_PATH, default={}).get(
+            "source_keys") or ()
+    )
     # Production run: always process the entire supplied corpus.
     existing_sources = load_existing_sources(
-        collection, files, target_dir=target_dir)
+        collection,
+        files,
+        target_dir=target_dir,
+        normalized_root=NORMALIZED_CHECK_DIR,
+    )
     print(f" > Existing indexed sources in this run: {len(existing_sources)}")
     total_files = len(files)
     print(f"--- Processing {total_files} files "
@@ -1030,6 +1178,11 @@ def main(argv=None):
         1 for r in result_log if r["status"] == "unindexable")
     errors = sum(1 for r in result_log if r["status"] == "error")
     success = sum(1 for r in result_log if r["status"] == "success")
+    published_sources.update(
+        result["fname"]
+        for result in result_log
+        if result["status"] in {"success", "skipped"}
+    )
     write_json_file(REFRESH_MARKER_PATH, {
         "index_version": INDEX_VERSION,
         "index_config_hash": INDEX_CONFIG_HASH,
@@ -1038,12 +1191,13 @@ def main(argv=None):
         "target_directory": target_dir,
         "updated_at_unix": time.time(),
         "source_files": len(files),
+        "active_source_count": len(published_sources),
         "success": success,
         "skipped": skipped,
         "unindexable": unindexable,
         "errors": errors,
         "collection_chunks": collection.count(),
-        "source_keys": files,
+        "source_keys": sorted(published_sources),
         "removed_sources": len(stale_sources),
     })
     print(

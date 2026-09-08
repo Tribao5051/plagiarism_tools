@@ -16,6 +16,7 @@ import torch
 from fastapi import UploadFile
 
 import api_service
+import corpus_metadata
 import detection_module_diff_p4 as detection_module
 import project_config
 import vector_db
@@ -24,7 +25,9 @@ from dspace_vector_flow import vector_stage
 from corpus_metadata import (
     chroma_metadata_fields,
     discover_normalized_documents,
+    metadata_sidecar_path,
     normalize_faculty,
+    normalized_text_path,
     write_normalized_document,
 )
 from corpus_scheduler import corpus_snapshot, discover_faculty_corpora
@@ -102,6 +105,78 @@ class FakeSemanticCollection:
             "documents": [self.document],
             "metadatas": [{"source": "paper.pdf"}],
         }
+
+
+class FakeLifecycleCollection:
+    def __init__(self, records=None, fail_add_calls=None):
+        self.records = copy.deepcopy(records or {})
+        self.fail_add_calls = set(fail_add_calls or ())
+        self.add_calls = 0
+        self.deleted = []
+
+    def count(self):
+        return len(self.records)
+
+    def get(self, ids=None, where=None, include=None, limit=None):
+        selected_ids = list(self.records)
+        if ids is not None:
+            requested = set(ids)
+            selected_ids = [item for item in selected_ids if item in requested]
+        if where is not None:
+            selected_ids = [
+                item for item in selected_ids
+                if all(
+                    self.records[item]["metadata"].get(key) == value
+                    for key, value in where.items()
+                )
+            ]
+        if limit is not None:
+            selected_ids = selected_ids[:limit]
+        return {
+            "ids": selected_ids,
+            "embeddings": [
+                self.records[item]["embedding"] for item in selected_ids
+            ],
+            "documents": [
+                self.records[item]["document"] for item in selected_ids
+            ],
+            "metadatas": [
+                copy.deepcopy(self.records[item]["metadata"])
+                for item in selected_ids
+            ],
+        }
+
+    def delete(self, ids=None, where=None):
+        if ids is not None:
+            selected_ids = [item for item in ids if item in self.records]
+        elif where is not None:
+            selected_ids = [
+                item for item, record in self.records.items()
+                if all(
+                    record["metadata"].get(key) == value
+                    for key, value in where.items()
+                )
+            ]
+        else:
+            selected_ids = []
+        self.deleted.append({"ids": list(selected_ids), "where": where})
+        for item in selected_ids:
+            self.records.pop(item, None)
+
+    def add(self, ids, embeddings, documents, metadatas):
+        self.add_calls += 1
+        if self.add_calls in self.fail_add_calls:
+            raise RuntimeError("simulated Chroma write failure")
+        for item, embedding, document, metadata in zip(
+            ids, embeddings, documents, metadatas
+        ):
+            if item in self.records:
+                raise RuntimeError(f"duplicate id: {item}")
+            self.records[item] = {
+                "embedding": list(embedding),
+                "document": document,
+                "metadata": copy.deepcopy(metadata),
+            }
 
 
 class RuntimeSelfTests(unittest.TestCase):
@@ -1126,6 +1201,346 @@ class RuntimeSelfTests(unittest.TestCase):
                 collection, ["current.pdf"], marker)
             self.assertEqual(stale, ["old.pdf"])
             self.assertEqual(collection.deleted, ["old.pdf"])
+
+    def test_stale_source_cleanup_removes_vector_text_sidecar_and_active_key(self):
+        with tempfile.TemporaryDirectory() as root:
+            normalized_root = os.path.join(root, "normalized")
+            write_normalized_document(
+                normalized_root, "old.pdf", "old text", {"faculty": "cs"})
+            write_normalized_document(
+                normalized_root,
+                "current.pdf",
+                "current text",
+                {"faculty": "cs"},
+            )
+            marker = os.path.join(root, "corpus_index.json")
+            with open(marker, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "source_keys": ["old.pdf", "current.pdf"],
+                    "index_config_hash": vector_db.INDEX_CONFIG_HASH,
+                }, handle)
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old text",
+                    "metadata": {"source": "old.pdf"},
+                },
+                "current-id": {
+                    "embedding": [2.0],
+                    "document": "current text",
+                    "metadata": {"source": "current.pdf"},
+                },
+            })
+
+            stale = remove_stale_sources(
+                collection,
+                ["current.pdf"],
+                marker,
+                normalized_root=normalized_root,
+            )
+
+            self.assertEqual(stale, ["old.pdf"])
+            self.assertNotIn("old-id", collection.records)
+            self.assertIn("current-id", collection.records)
+            old_text = normalized_text_path(normalized_root, "old.pdf")
+            self.assertFalse(os.path.exists(old_text))
+            self.assertFalse(os.path.exists(metadata_sidecar_path(old_text)))
+            current_text = normalized_text_path(
+                normalized_root, "current.pdf")
+            self.assertTrue(os.path.isfile(current_text))
+            with open(marker, "r", encoding="utf-8") as handle:
+                updated_marker = json.load(handle)
+            self.assertEqual(updated_marker["source_keys"], ["current.pdf"])
+
+    def test_stale_cleanup_rejects_paths_outside_managed_normalized_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            normalized_root = os.path.join(root, "normalized")
+            os.makedirs(normalized_root)
+            outside_path = os.path.join(root, "outside.pdf.txt")
+            with open(outside_path, "w", encoding="utf-8") as handle:
+                handle.write("must remain")
+            marker = os.path.join(root, "corpus_index.json")
+            with open(marker, "w", encoding="utf-8") as handle:
+                json.dump({"source_keys": ["../outside.pdf"]}, handle)
+            collection = FakeLifecycleCollection({
+                "outside-id": {
+                    "embedding": [1.0],
+                    "document": "outside",
+                    "metadata": {"source": "../outside.pdf"},
+                }
+            })
+
+            with self.assertRaises(ValueError):
+                remove_stale_sources(
+                    collection,
+                    [],
+                    marker,
+                    normalized_root=normalized_root,
+                )
+
+            self.assertTrue(os.path.isfile(outside_path))
+            self.assertIn("outside-id", collection.records)
+            self.assertEqual(collection.deleted, [])
+
+    def test_api_build_text_index_uses_only_published_active_sources(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "removed.pdf", "removed source text", {"faculty": "cs"})
+            write_normalized_document(
+                root, "current.pdf", "current source text", {"faculty": "cs"})
+            documents = discover_normalized_documents(root)
+            collection = FakeSemanticCollection("vector text")
+
+            state = api_service.build_text_index(
+                documents,
+                "cs",
+                collection,
+                object(),
+                active_sources={"current.pdf"},
+            )
+
+            self.assertEqual(state["filenames"], ["current.pdf"])
+            self.assertEqual(state["filename_set"], {"current.pdf"})
+            self.assertNotIn("removed.pdf", state["corpus_texts"])
+
+    def test_extraction_ready_does_not_publish_text_before_embedding(self):
+        with tempfile.TemporaryDirectory() as root:
+            source_path = os.path.join(root, "paper.txt")
+            with open(source_path, "w", encoding="utf-8") as handle:
+                handle.write("new source bytes")
+            normalized_root = os.path.join(root, "normalized")
+            write_normalized_document(
+                normalized_root,
+                "paper.txt",
+                "old published text",
+                {"faculty": "cs"},
+            )
+            with (
+                patch.object(
+                    vector_db, "NORMALIZED_CHECK_DIR", normalized_root),
+                patch.object(
+                    vector_db,
+                    "extract_university_content",
+                    return_value="new extracted text",
+                ),
+                patch.object(
+                    vector_db,
+                    "get_thread_chunk_tools",
+                    return_value=(object(), None),
+                ),
+                patch.object(
+                    vector_db,
+                    "chunk_text",
+                    return_value=["new extracted text"],
+                ),
+            ):
+                result = vector_db.extract_and_chunk(
+                    "paper.txt", root, existing_sources=set())
+
+            self.assertEqual(result["status"], "ready")
+            with open(
+                normalized_text_path(normalized_root, "paper.txt"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                self.assertEqual(handle.read(), "old published text")
+
+    def test_changed_source_keeps_old_vectors_until_replacement_succeeds(self):
+        with tempfile.TemporaryDirectory() as root:
+            source_path = os.path.join(root, "paper.txt")
+            with open(source_path, "w", encoding="utf-8") as handle:
+                handle.write("changed source")
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old text",
+                    "metadata": {
+                        "source": "paper.txt",
+                        "file_sha256": "old-file-hash",
+                        "chunk_count": 1,
+                    },
+                }
+            })
+
+            existing = vector_db.load_existing_sources(
+                collection, ["paper.txt"], target_dir=root)
+
+            self.assertEqual(existing, set())
+            self.assertIn("old-id", collection.records)
+            self.assertEqual(collection.deleted, [])
+
+    def test_failed_vector_write_restores_old_vector_and_text(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "paper.pdf", "old text", {"faculty": "cs"})
+            old_record = {
+                "old-id": {
+                    "embedding": [1.0, 0.0],
+                    "document": "old chunk",
+                    "metadata": {
+                        "source": "paper.pdf",
+                        "chunk_count": 1,
+                        "content_sha256": "old-content",
+                    },
+                }
+            }
+            collection = FakeLifecycleCollection(
+                old_record, fail_add_calls={1})
+            new_metadata = [{
+                "source": "paper.pdf",
+                "chunk_count": 1,
+                "content_sha256": "new-content",
+            }]
+
+            with self.assertRaisesRegex(
+                RuntimeError, "simulated Chroma write failure"
+            ):
+                vector_db.publish_source_update(
+                    collection=collection,
+                    normalized_root=root,
+                    source="paper.pdf",
+                    text="new text",
+                    source_metadata={"faculty": "cs"},
+                    ids=["new-id"],
+                    embeddings=[[0.0, 1.0]],
+                    documents=["new chunk"],
+                    metadatas=new_metadata,
+                    batch_size=10,
+                )
+
+            self.assertEqual(set(collection.records), {"old-id"})
+            self.assertEqual(
+                collection.records["old-id"]["document"], "old chunk")
+            with open(
+                normalized_text_path(root, "paper.pdf"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                self.assertEqual(handle.read(), "old text")
+
+    def test_failed_text_publish_restores_old_vector_and_text(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "paper.pdf", "old text", {"faculty": "cs"})
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old chunk",
+                    "metadata": {"source": "paper.pdf", "chunk_count": 1},
+                }
+            })
+            with (
+                patch.object(
+                    vector_db,
+                    "publish_staged_normalized_document",
+                    side_effect=OSError("simulated text publish failure"),
+                ),
+                self.assertRaisesRegex(
+                    OSError, "simulated text publish failure"
+                ),
+            ):
+                vector_db.publish_source_update(
+                    collection=collection,
+                    normalized_root=root,
+                    source="paper.pdf",
+                    text="new text",
+                    source_metadata={"faculty": "cs"},
+                    ids=["new-id"],
+                    embeddings=[[2.0]],
+                    documents=["new chunk"],
+                    metadatas=[{
+                        "source": "paper.pdf",
+                        "chunk_count": 1,
+                    }],
+                    batch_size=10,
+                )
+
+            self.assertEqual(set(collection.records), {"old-id"})
+            with open(
+                normalized_text_path(root, "paper.pdf"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                self.assertEqual(handle.read(), "old text")
+
+    def test_normalized_pair_publish_restores_both_files_on_replace_failure(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "paper.pdf", "old text", {"faculty": "old"})
+            staged = corpus_metadata.stage_normalized_document(
+                root, "paper.pdf", "new text", {"faculty": "new"})
+            real_replace = corpus_metadata.os.replace
+
+            def fail_sidecar_publish(source, destination):
+                if (
+                    source == staged["staged_sidecar_path"]
+                    and destination == staged["sidecar_path"]
+                ):
+                    raise OSError("simulated sidecar replace failure")
+                return real_replace(source, destination)
+
+            with (
+                patch.object(
+                    corpus_metadata.os,
+                    "replace",
+                    side_effect=fail_sidecar_publish,
+                ),
+                self.assertRaisesRegex(
+                    OSError, "simulated sidecar replace failure"
+                ),
+            ):
+                corpus_metadata.publish_staged_normalized_document(staged)
+
+            text_path = normalized_text_path(root, "paper.pdf")
+            with open(text_path, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old text")
+            with open(
+                metadata_sidecar_path(text_path), "r", encoding="utf-8"
+            ) as handle:
+                self.assertEqual(json.load(handle)["faculty"], "old")
+            leftovers = [
+                name for name in os.listdir(root)
+                if ".stage-" in name or ".backup-" in name
+            ]
+            self.assertEqual(leftovers, [])
+
+    def test_successful_source_publish_replaces_text_and_vector_together(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_normalized_document(
+                root, "paper.pdf", "old text", {"faculty": "cs"})
+            collection = FakeLifecycleCollection({
+                "old-id": {
+                    "embedding": [1.0],
+                    "document": "old chunk",
+                    "metadata": {"source": "paper.pdf", "chunk_count": 1},
+                }
+            })
+
+            vector_db.publish_source_update(
+                collection=collection,
+                normalized_root=root,
+                source="paper.pdf",
+                text="new text",
+                source_metadata={"faculty": "cs"},
+                ids=["new-id"],
+                embeddings=[[2.0]],
+                documents=["new chunk"],
+                metadatas=[{
+                    "source": "paper.pdf",
+                    "chunk_count": 1,
+                }],
+                batch_size=10,
+            )
+
+            self.assertEqual(set(collection.records), {"new-id"})
+            self.assertEqual(
+                collection.records["new-id"]["document"], "new chunk")
+            with open(
+                normalized_text_path(root, "paper.pdf"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                self.assertEqual(handle.read(), "new text")
 
     def test_openapi_accepts_faculty_in_query_and_form(self):
         specification = api_service.app.openapi()
