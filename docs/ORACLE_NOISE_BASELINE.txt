@@ -1,0 +1,195 @@
+BÁO CÁO KIỂM TRA ORACLE + NGUỒN NHIỄU
+Chạy test: 09/09/2026. Hoàn tất kiểm tra và nhận xét: 10/09/2026.
+
+1. Kết quả chính
+
+50/50 request API đã hoàn tất. Mỗi response được đối chiếu lại với manifest:
+đúng chế độ oracle_xml, đúng số lượng và đúng tập nguồn yêu cầu.
+
+So sánh trên CÙNG 14 bài có đạo văn, chứa tổng cộng 117 đoạn XML:
+
+Điều kiện         Evidence đúng/tổng  Precision  Bắt được/tổng  Recall  Giây/bài
+Oracle thuần      76/78               97,44%     69/117        58,97%  6,00
+Oracle +5 nhiễu   76/83               91,57%     69/117        58,97%  10,86
+Oracle +10 nhiễu  76/84               90,48%     69/117        58,97%  19,50
+
+Thời gian là trung bình API wall time của cùng 14 bài, không tính thời gian chấm
+XML và tạo HTML tại client. Mỗi điều kiện được chạy một lần cho mỗi bài.
+
+Thêm 5-10 nguồn nhiễu không làm giảm recall trong tập đã thử, nhưng tăng số
+evidence báo nhầm. Điều này ủng hộ hướng so sánh trong một tập nguồn có liên quan;
+chưa chứng minh lọc cùng khoa trong DSpace luôn chứa đủ nguồn đúng.
+
+Có thêm 4 bài không có đạo văn được XML gán nhãn, chạy ở cả mức +5 và +10.
+Ở mỗi mức, 2/4 bài bị cảnh báo, mỗi bài có một evidence: 00322 và 00119.
+Mẫu quá nhỏ để suy rộng thành tỷ lệ báo nhầm chung của hệ thống.
+Khi tính cả 18 bài: precision +5 = 76/85 = 89,41%; +10 = 76/86 = 88,37%.
+Không có oracle thuần cho bài âm tính vì không có nguồn XML nào để so sánh.
+
+2. Điều kiện chạy, khả năng tái lập
+
+- API thật, một request tại một thời điểm, GPU CUDA RTX 3050 Laptop 4 GB.
+- Index semantic bge_m3_semantic_potion384_v1: 614 nguồn, 187.483 vector.
+- Model BGE-M3; profile agreement; encode batch 48. Không thay model/threshold.
+- Bỏ qua TF-IDF/hybrid retrieval, truyền tên các file nguồn TOÀN VĂN vào API.
+- Không truyền offset, đoạn XML hoặc nhãn đúng/sai vào model để chọn evidence.
+- 5 nhiễu gồm 3 nguồn từ shortlist cũ không có trong XML và 2 nguồn ngẫu nhiên.
+- 10 nhiễu gồm 6 nguồn shortlist và 4 nguồn ngẫu nhiên, bao gồm đúng 5 nguồn trên.
+- Nguồn shortlist là nhiễu khó vì tools đã từng xếp chúng vào nhóm liên quan.
+- Seed 20260909; manifest lưu danh sách, thứ tự và SHA-256 của các đầu vào.
+- Cùng 18 bài đã dùng trước đây; đây là chẩn đoán, không phải tập held-out mới.
+- Không huấn luyện, tune hay tự triển khai reranker từ kết quả này.
+
+Thứ tự 0/5/10 được xoay vòng theo bài. Cache tự hoạt động, không xóa cache giữa
+các request. Có lấy mẫu CPU/RAM/GPU nhưng không cô lập máy khỏi ứng dụng khác.
+Vì vậy, không gọi các lượt này là cold/warm được kiểm soát; độ dài nguồn nhiễu,
+cache và tải máy đều có thể ảnh hưởng thời gian. Chưa test nhiều request đồng thời.
+
+API được người dùng bật oracle chỉ cho phiên local. Cấu hình lưu trên đĩa vẫn
+tắt oracle. Không rebuild hoặc sửa corpus/index trong phép thử này.
+
+3. Cách hiểu precision và khác biệt với báo cáo trước
+
+Dùng các hàm prediction_text và annotate_truth_matches của Task 6 trong
+performance/benchmark_evidence_rerankers.py. Chỉ nạp các hàm thuần cho client
+benchmark, không import embedding model; không sửa evaluator ở doan/project.
+
+Evidence-hit precision = số evidence khớp ít nhất một cặp XML đúng tên nguồn,
+đúng nội dung ở CẢ bài nộp và nguồn, chia tổng evidence hiển thị.
+Segment recall = số đoạn XML phân biệt được bắt, chia tổng đoạn XML.
+
+Nhiều evidence cùng khớp một đoạn XML có thể đều được tính đúng, nhưng recall
+chỉ tính đoạn XML ấy một lần. Precision này không đánh giá độ gọn của evidence
+và không phạt trùng lặp giống cách chỉ ghi công một evidence tốt nhất cho mỗi
+đoạn của báo cáo cũ.
+
+Hàm Task 6 dùng containment hai chiều, ngưỡng chấm 0,20; nhóm high còn dùng token
+containment. Đây là phép chấm nội dung, chưa phải kiểm tra offset XML chính xác.
+Precision cao KHÔNG có nghĩa mọi ký tự được highlight đều đúng. Character
+precision cần mapping về văn bản gốc; hiện chưa có phép đo ấy trong benchmark.
+
+Chấm lại CÙNG JSON shortlist cũ bằng cách trên: 69/80 evidence đúng = 86,25%,
+recall vẫn 63/117 = 53,85%. Con số 70% trước đây dùng cách ghi nhận evidence khác.
+Thay đổi 70% -> 86,25% trên cùng dữ liệu là thay phép chấm, không phải tools vừa
+được cải tiến. Không so trực tiếp precision thô 3,52% cũ với số mới.
+Oracle và shortlist trong summary.json mới đều được chấm cùng quy tắc hai phía.
+
+4. Semantic và verbatim ở mức +10 nhiễu
+
+Trên cùng 14 bài dương tính:
+Semantic: 68/72 evidence đúng, P=94,44%; bắt 65/117 đoạn, R=55,56%.
+Verbatim: 63/68 evidence đúng, P=92,65%; bắt 59/117 đoạn, R=50,43%.
+Mixed: 55/56 evidence đúng, P=98,21%; bắt 55/117 đoạn, R=47,01%.
+Mixed thuộc cả semantic và verbatim, vì vậy không cộng các hàng với nhau.
+
+Recall theo nhóm XML, giống nhau ở ba mức 0/5/10:
+none: 37/54 = 68,52%; low: 19/43 = 44,19%; high: 13/20 = 65,00%.
+translation: 8/14 = 57,14%, có thể chồng lấp các nhóm obfuscation trên.
+Các nhóm nhỏ, không cân bằng; không suy ra high dễ hơn low từ các tỷ lệ này.
+
+5. Hạn chế đã xác định và hướng giải quyết
+
+A. Phase 7 làm mất nhiều vùng đã có evidence hỗ trợ.
+
+Ở cả oracle thuần, +5 và +10 nhiễu:
+- Evidence thô: bắt 114/117 đoạn, recall 97,44%.
+- Sau consolidate: vẫn 114/117 đoạn.
+- Sau chọn hiển thị: còn 69/117 đoạn, recall 58,97%.
+
+45 đoạn có evidence hỗ trợ sau gộp nhưng không còn trong phần hiển thị. Chỉ 3
+đoạn chưa được bắt ngay trong evidence thô. Số này được đánh giá theo phép chấm
+nội dung nêu trên, chưa phải độ phủ ký tự của toàn bộ đoạn.
+
+Cấu hình agreement thật đặt max_per_source=4 và minimum_confidence=0.40.
+Ở bài 00320 với +10 nhiễu: 1.172 ứng viên bị source_cap, 78 bị agreement_score,
+21 bị same_source_duplicate, 8 bị cross_source_competition. Đây là SỐ ỨNG VIÊN,
+không phải số đoạn XML. Chưa truy vết từng ứng viên để quy cả 45 đoạn mất cho
+riêng giới hạn 4 evidence, nhưng đã xác định được bước mất đoạn là Phase 7.
+
+Hướng ưu tiên: chọn theo các vùng nội dung phân biệt, khử trùng trước khi áp cap;
+cân nhắc giới hạn theo độ phủ thay vì cùng một số evidence cho mọi nguồn dài/ngắn.
+Giữ tập bằng chứng đã xác minh độc lập với số đoạn mặc định hiển thị trên giao
+diện. Test bằng cùng manifest để bảo đảm tăng recall mà không tăng báo nhầm.
+
+B. Boilerplate, tên tài liệu và nội dung cùng chủ đề gây cảnh báo sai.
+
+00322: evidence trùng dòng ghi công "Online Distributed Proofreading Team".
+00241: evidence trùng tên sách "Sketch of Edward Coles..." trong phần tham khảo;
+các evidence semantic khác mô tả nguồn tài liệu về Liberia/Bancroft.
+Trùng chữ có thể có thật nhưng không phải đoạn đạo văn được XML gán nhãn.
+Đây còn là vấn đề chính sách tính điểm, không nhất thiết là lỗi exact matching.
+
+Hướng ưu tiên: nhận diện boilerplate/ghi công, danh mục tham khảo và tên tài liệu;
+cân nhắc không tính chúng vào điểm đạo văn nhưng giữ văn bản, offset để đối chiếu.
+Với semantic, kiểm chứng quan hệ giữa hai đoạn cụ thể bằng ngữ cảnh và dấu hiệu
+từ vựng, thay vì chỉ giống chủ đề. Dùng các ca này làm hard-negative validation.
+Không chỉ nâng threshold toàn bộ vì sẽ làm mất thêm paraphrase đúng; không xóa
+mọi câu có từ references.
+
+C. Có cả lỗi chọn nguồn và lỗi chọn evidence; cần phân biệt.
+
+00241: shortlist cũ bắt 0/3 do thiếu nguồn đúng; oracle thuần bắt 2/3.
+Ở +10 nhiễu, precision riêng bài này chỉ 40% vì có 3 evidence trên nguồn nhiễu.
+00320: sau gộp bắt 57/58 đoạn nhưng hiển thị chỉ 27/58 ở cả ba mức oracle.
+Một bài này chứa 58/117 đoạn XML nên ảnh hưởng lớn đến điểm tổng.
+
+Với bằng chứng hiện tại, ưu tiên xử lý chọn evidence và nội dung gây nhiễu trước
+khi fine-tune embedding. Ba đoạn chưa có evidence thô cần điều tra riêng matching,
+chunk, ngưỡng tạo evidence và phép chấm; chưa thể kết luận tất cả là lỗi model.
+
+D. Fingerprint nguồn vẫn tốn thời gian khi số nguồn tăng.
+
+Trung bình trên cùng 14 bài dương tính:
+                 Phase 3     Phase 4     Fingerprint nguồn trong Phase 4
+Oracle thuần     4,22 giây   1,43 giây   0,50 giây
+Oracle +5        5,24 giây   5,27 giây   4,10 giây
+Oracle +10       6,66 giây   12,49 giây  11,15 giây
+
+Phase 7 chỉ khoảng 0,06-0,07 giây/bài: nhẹ về thời gian nhưng ảnh hưởng lớn đến
+recall. Ưu tiên tối ưu chuẩn bị/lưu fingerprint, cache có giới hạn bộ nhớ và
+invalidation đúng phiên bản; tăng batch GPU không giải quyết trực tiếp khâu này.
+
+VRAM đỉnh 3.396 MB trên GPU 4.096 MB; GPU đạt đỉnh 100%; nhiệt độ đỉnh 78 độ C.
+RSS API cao nhất 11.863,1 MB; RAM toàn máy từng đạt 98,4%; CPU toàn máy đỉnh lấy
+mẫu 25%. Các số hệ thống bao gồm ứng dụng khác; CPU tổng thấp không loại trừ
+nút thắt đơn luồng. Chưa đo paging nên chưa khẳng định paging gây chậm.
+Tổng wall time 50 request: 618,54 giây, không gồm chuẩn bị/chấm/tạo báo cáo.
+
+6. Khuyến nghị hiện tại
+
+Core tìm được evidence hỗ trợ phần lớn đoạn XML khi có đúng nguồn; thêm 5-10
+nhiễu không làm recall giảm trong tập đã thử. Tuy nhiên output người dùng còn
+bỏ sót nhiều và một số bài âm tính vẫn bị cảnh báo. Chưa thể gọi tools hoàn thiện
+chỉ dựa vào precision trên bài dương tính hoặc oracle.
+
+Thứ tự tiếp theo: sửa chọn evidence theo độ phủ; xử lý boilerplate/cảnh báo
+semantic sai; chạy lại cùng manifest; tối ưu fingerprint/cache; sau đó mới cân
+nhắc fine-tuning nếu các ca bỏ sót thật vẫn nằm ở matching. Các hướng này chưa
+được triển khai trong lượt benchmark, model/config production vẫn giữ nguyên.
+
+Về build index: có thể ghi "dự trù khoảng 90 phút trên máy cá nhân đang đa nhiệm,
+tác vụ định kỳ". Giữ số thực đo 80,32 phút kèm điều kiện máy đang dùng cho việc
+khác; không biến 90 phút thành số đo chính xác hoặc benchmark máy nhàn rỗi.
+
+7. Các file và cách chạy lại
+
+Script ở thư mục cha: run_oracle_noise.py.
+manifest.json: danh sách nguồn, thứ tự và hash để tái lập.
+summary.json, per_case.csv, per_case.json: số liệu tổng/từng bài/từng điều kiện.
+raw_json/: 50 response đầy đủ; requests/: 50 tập nguồn và mẫu tài nguyên.
+side_by_side.html: đối chiếu XML bài nộp/nguồn với evidence và các đoạn bỏ sót;
+HTML giới hạn trích đoạn 1.600 ký tự, JSON giữ đầy đủ nội dung.
+run_environment.json: trạng thái API, Python, GPU, thời điểm và hash script.
+
+Trong CMD, từ plagiarism_runtime, khi API oracle đang bật:
+venv\Scripts\python.exe -B -X utf8 D:\hochanh\hk252\plagiarism_performance\oracle_noise_pan18_20260909\run_oracle_noise.py --run
+
+Lệnh trên dùng lại response hoàn tất nếu chúng đã tồn tại, không gọi API lại.
+Để có một lượt đo mới thật sự, thêm --output cùng đường dẫn thư mục kết quả MỚI.
+Không cần tạo lại vector DB để lặp benchmark này.
+
+3 self-tests giả lập đạt trước khi chạy; 50/50 request và tập candidate được
+xác minh lại sau chạy; HTML có đủ 50 phần đối chiếu. Không sửa source runtime,
+model, corpus, index hoặc config lưu trên đĩa. Git vẫn có ssss untracked có sẵn.
+Khi dùng bình thường, dừng phiên oracle và khởi động api_service.py theo lệnh
+cũ để trở về mặc định tắt oracle.

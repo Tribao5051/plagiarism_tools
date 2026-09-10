@@ -1,0 +1,353 @@
+{
+  "groups": {
+    "prior_shortlist": {
+      "files": 18,
+      "positive_files": 14,
+      "negative_files": 4,
+      "positive_stages": {
+        "raw_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 107,
+          "evidence_count": 2852,
+          "true_positive_evidence": 2662,
+          "evidence_hit_precision": 0.9333800841514727,
+          "segment_recall": 0.9145299145299145,
+          "f1": 0.9238588558880863
+        },
+        "consolidated_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 107,
+          "evidence_count": 1671,
+          "true_positive_evidence": 1488,
+          "evidence_hit_precision": 0.8904847396768402,
+          "segment_recall": 0.9145299145299145,
+          "f1": 0.902347170388758
+        },
+        "evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 63,
+          "evidence_count": 79,
+          "true_positive_evidence": 69,
+          "evidence_hit_precision": 0.8734177215189873,
+          "segment_recall": 0.5384615384615384,
+          "f1": 0.666206896551724
+        }
+      },
+      "positive_families": {
+        "semantic": {
+          "truth_segments": 117,
+          "caught_truth_segments": 61,
+          "evidence_count": 69,
+          "true_positive_evidence": 64,
+          "evidence_hit_precision": 0.927536231884058,
+          "segment_recall": 0.5213675213675214,
+          "f1": 0.6675215867316406
+        },
+        "verbatim": {
+          "truth_segments": 117,
+          "caught_truth_segments": 54,
+          "evidence_count": 63,
+          "true_positive_evidence": 57,
+          "evidence_hit_precision": 0.9047619047619048,
+          "segment_recall": 0.46153846153846156,
+          "f1": 0.6112600536193029
+        },
+        "mixed": {
+          "truth_segments": 117,
+          "caught_truth_segments": 52,
+          "evidence_count": 53,
+          "true_positive_evidence": 52,
+          "evidence_hit_precision": 0.9811320754716981,
+          "segment_recall": 0.4444444444444444,
+          "f1": 0.611764705882353
+        }
+      },
+      "all_display": {
+        "truth_segments": 117,
+        "caught_truth_segments": 63,
+        "evidence_count": 80,
+        "true_positive_evidence": 69,
+        "evidence_hit_precision": 0.8625,
+        "segment_recall": 0.5384615384615384,
+        "f1": 0.6630061770761839
+      },
+      "negative_files_with_evidence": 1,
+      "evidence_on_noise_sources": 11,
+      "mean_wall_seconds": null,
+      "phase_mean_seconds": {
+        "phase_2": 0.9248666666666666,
+        "phase_3": 7.708283333333333,
+        "phase_4": 9.7346,
+        "phase_5": 0.034527777777777775,
+        "phase_6": 0.012555555555555556,
+        "phase_7": 0.028499999999999998
+      }
+    },
+    "oracle_0": {
+      "files": 14,
+      "positive_files": 14,
+      "negative_files": 0,
+      "positive_stages": {
+        "raw_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 2690,
+          "true_positive_evidence": 2673,
+          "evidence_hit_precision": 0.9936802973977695,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.983924791855357
+        },
+        "consolidated_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 1513,
+          "true_positive_evidence": 1497,
+          "evidence_hit_precision": 0.9894249834765367,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.9818341862492125
+        },
+        "evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 69,
+          "evidence_count": 78,
+          "true_positive_evidence": 76,
+          "evidence_hit_precision": 0.9743589743589743,
+          "segment_recall": 0.5897435897435898,
+          "f1": 0.7347625052543085
+        }
+      },
+      "positive_families": {
+        "semantic": {
+          "truth_segments": 117,
+          "caught_truth_segments": 65,
+          "evidence_count": 68,
+          "true_positive_evidence": 68,
+          "evidence_hit_precision": 1.0,
+          "segment_recall": 0.5555555555555556,
+          "f1": 0.7142857142857143
+        },
+        "verbatim": {
+          "truth_segments": 117,
+          "caught_truth_segments": 59,
+          "evidence_count": 65,
+          "true_positive_evidence": 63,
+          "evidence_hit_precision": 0.9692307692307692,
+          "segment_recall": 0.5042735042735043,
+          "f1": 0.6633946100303408
+        },
+        "mixed": {
+          "truth_segments": 117,
+          "caught_truth_segments": 55,
+          "evidence_count": 55,
+          "true_positive_evidence": 55,
+          "evidence_hit_precision": 1.0,
+          "segment_recall": 0.4700854700854701,
+          "f1": 0.6395348837209301
+        }
+      },
+      "all_display": {
+        "truth_segments": 117,
+        "caught_truth_segments": 69,
+        "evidence_count": 78,
+        "true_positive_evidence": 76,
+        "evidence_hit_precision": 0.9743589743589743,
+        "segment_recall": 0.5897435897435898,
+        "f1": 0.7347625052543085
+      },
+      "negative_files_with_evidence": 0,
+      "evidence_on_noise_sources": 0,
+      "mean_wall_seconds": 5.998159399999817,
+      "phase_mean_seconds": {
+        "phase_2": 0.0005,
+        "phase_3": 4.220714285714286,
+        "phase_4": 1.4280928571428573,
+        "phase_5": 0.1139142857142857,
+        "phase_6": 0.03432857142857143,
+        "phase_7": 0.06442142857142857
+      }
+    },
+    "oracle_5": {
+      "files": 18,
+      "positive_files": 14,
+      "negative_files": 4,
+      "positive_stages": {
+        "raw_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 2800,
+          "true_positive_evidence": 2671,
+          "evidence_hit_precision": 0.9539285714285715,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.9640355417939012
+        },
+        "consolidated_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 1619,
+          "true_positive_evidence": 1496,
+          "evidence_hit_precision": 0.9240271772699197,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.948525853870155
+        },
+        "evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 69,
+          "evidence_count": 83,
+          "true_positive_evidence": 76,
+          "evidence_hit_precision": 0.9156626506024096,
+          "segment_recall": 0.5897435897435898,
+          "f1": 0.7174225323209522
+        }
+      },
+      "positive_families": {
+        "semantic": {
+          "truth_segments": 117,
+          "caught_truth_segments": 65,
+          "evidence_count": 71,
+          "true_positive_evidence": 68,
+          "evidence_hit_precision": 0.9577464788732394,
+          "segment_recall": 0.5555555555555556,
+          "f1": 0.703205791106515
+        },
+        "verbatim": {
+          "truth_segments": 117,
+          "caught_truth_segments": 59,
+          "evidence_count": 68,
+          "true_positive_evidence": 63,
+          "evidence_hit_precision": 0.9264705882352942,
+          "segment_recall": 0.5042735042735043,
+          "f1": 0.6530791531230783
+        },
+        "mixed": {
+          "truth_segments": 117,
+          "caught_truth_segments": 55,
+          "evidence_count": 56,
+          "true_positive_evidence": 55,
+          "evidence_hit_precision": 0.9821428571428571,
+          "segment_recall": 0.4700854700854701,
+          "f1": 0.6358381502890174
+        }
+      },
+      "all_display": {
+        "truth_segments": 117,
+        "caught_truth_segments": 69,
+        "evidence_count": 85,
+        "true_positive_evidence": 76,
+        "evidence_hit_precision": 0.8941176470588236,
+        "segment_recall": 0.5897435897435898,
+        "f1": 0.7107135596665989
+      },
+      "negative_files_with_evidence": 2,
+      "evidence_on_noise_sources": 9,
+      "mean_wall_seconds": 10.734322566666581,
+      "phase_mean_seconds": {
+        "phase_2": 0.0006166666666666667,
+        "phase_3": 5.421077777777778,
+        "phase_4": 5.0144,
+        "phase_5": 0.08325,
+        "phase_6": 0.030588888888888888,
+        "phase_7": 0.05799444444444444
+      }
+    },
+    "oracle_10": {
+      "files": 18,
+      "positive_files": 14,
+      "negative_files": 4,
+      "positive_stages": {
+        "raw_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 2827,
+          "true_positive_evidence": 2671,
+          "evidence_hit_precision": 0.9448178280863105,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.9593610435029183
+        },
+        "consolidated_evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 114,
+          "evidence_count": 1646,
+          "true_positive_evidence": 1496,
+          "evidence_hit_precision": 0.9088699878493317,
+          "segment_recall": 0.9743589743589743,
+          "f1": 0.9404757965787645
+        },
+        "evidence": {
+          "truth_segments": 117,
+          "caught_truth_segments": 69,
+          "evidence_count": 84,
+          "true_positive_evidence": 76,
+          "evidence_hit_precision": 0.9047619047619048,
+          "segment_recall": 0.5897435897435898,
+          "f1": 0.7140522875816994
+        }
+      },
+      "positive_families": {
+        "semantic": {
+          "truth_segments": 117,
+          "caught_truth_segments": 65,
+          "evidence_count": 72,
+          "true_positive_evidence": 68,
+          "evidence_hit_precision": 0.9444444444444444,
+          "segment_recall": 0.5555555555555556,
+          "f1": 0.6995884773662552
+        },
+        "verbatim": {
+          "truth_segments": 117,
+          "caught_truth_segments": 59,
+          "evidence_count": 68,
+          "true_positive_evidence": 63,
+          "evidence_hit_precision": 0.9264705882352942,
+          "segment_recall": 0.5042735042735043,
+          "f1": 0.6530791531230783
+        },
+        "mixed": {
+          "truth_segments": 117,
+          "caught_truth_segments": 55,
+          "evidence_count": 56,
+          "true_positive_evidence": 55,
+          "evidence_hit_precision": 0.9821428571428571,
+          "segment_recall": 0.4700854700854701,
+          "f1": 0.6358381502890174
+        }
+      },
+      "all_display": {
+        "truth_segments": 117,
+        "caught_truth_segments": 69,
+        "evidence_count": 86,
+        "true_positive_evidence": 76,
+        "evidence_hit_precision": 0.8837209302325582,
+        "segment_recall": 0.5897435897435898,
+        "f1": 0.7074059085390532
+      },
+      "negative_files_with_evidence": 2,
+      "evidence_on_noise_sources": 10,
+      "mean_wall_seconds": 18.963653355555735,
+      "phase_mean_seconds": {
+        "phase_2": 0.0008222222222222222,
+        "phase_3": 6.793622222222222,
+        "phase_4": 11.866377777777778,
+        "phase_5": 0.08211666666666666,
+        "phase_6": 0.029227777777777776,
+        "phase_7": 0.05807777777777778
+      }
+    }
+  },
+  "completed_cases": 68,
+  "expected_live_requests": 50,
+  "completed_live_requests": 50,
+  "metric": "Task 6: both submission and source text must match the same XML pair; every evidence with a valid pair is a hit; recall is union of XML IDs. Character precision unavailable.",
+  "notes": [
+    "Oracle uses whole source files, never XML text spans as input.",
+    "All forced candidates are compared; faculty/hybrid retrieval is bypassed.",
+    "Noise means not annotated as a source in this submission XML.",
+    "Hard distractors come from this submission's previous top-20 results.",
+    "Ten-noise condition includes the same five-noise sources.",
+    "Pure oracle is not applicable to negative documents: no sources to compare.",
+    "One sequential request per condition; rotated order, mixed natural cache.",
+    "Source count and source text lengths differ, so latency is descriptive.",
+    "Fixed 18 documents reused for diagnosis; this is not a new held-out test.",
+    "No model, detection thresholds, or evidence selection tuning.",
+    "Character precision not measured: original-offset mapping is required."
+  ]
+}

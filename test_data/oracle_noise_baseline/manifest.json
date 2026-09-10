@@ -1,0 +1,1248 @@
+{
+  "schema": "oracle_noise_task6_v1",
+  "seed": 20260909,
+  "conditions": [
+    0,
+    5,
+    10
+  ],
+  "faculty": "pan-evaluation",
+  "evidence_profile": "agreement",
+  "encode_batch_size": 48,
+  "documents": [
+    {
+      "file": "suspicious-document00006",
+      "partition": "train",
+      "truth_segments": 9,
+      "truth_sources": [
+        "source-document05945.txt",
+        "source-document06542.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document01217.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05491.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01077.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document02619.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00749.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06520.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05209.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02033.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document05505.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06655.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        0,
+        5,
+        10
+      ],
+      "submission_sha256": "5b32e4ace96fc67cfb78b0af24a2e94b925292800a93b43fff6caf9e59a7705e",
+      "xml_sha256": "495bb8654c2b9a0260fe397189a65b9e600657fbcffb58bafcd86c6338a7bca9",
+      "previous_response_sha256": "470097393031696e90f6540b8d6d35d284e6035f102df5a908bcd5490c6c9cfa"
+    },
+    {
+      "file": "suspicious-document00128",
+      "partition": "train",
+      "truth_segments": 0,
+      "truth_sources": [],
+      "noise": [
+        {
+          "source": "source-document06307.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06717.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01502.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04971.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03109.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00195.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00782.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00860.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01059.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02063.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10
+      ],
+      "submission_sha256": "85e4f873257c03e85ade5d6bb82d636035eb4b317d231305d6597a2e67934488",
+      "xml_sha256": "95a24ee478af4b4c3a8819a16bbf3d265e5ca0ac245111b34039d20fce3df452",
+      "previous_response_sha256": "24b90fa26dcb7336947b6f9128fde35ab2041d3f70bb8e3650579b4de5818f05"
+    },
+    {
+      "file": "suspicious-document00135",
+      "partition": "train",
+      "truth_segments": 3,
+      "truth_sources": [
+        "source-document01528.txt",
+        "source-document02002.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document06107.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03151.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04633.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00302.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00203.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06076.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05922.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05719.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03891.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01175.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        0,
+        5
+      ],
+      "submission_sha256": "537eaa67a4793d4b2af8ffeb35452b3c875340e4fdd557a28743a8e220989faa",
+      "xml_sha256": "2534ac7f6e2fc1391a1a14baf3109d410beb428f5a11444add2db9701c6cf57b",
+      "previous_response_sha256": "f24dd1dbb8c875e93aeb4b4a51fca9d1b3a05bb2ca9097f6352ae99afd283c53"
+    },
+    {
+      "file": "suspicious-document00247",
+      "partition": "train",
+      "truth_segments": 4,
+      "truth_sources": [
+        "source-document01633.txt",
+        "source-document04300.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document03018.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00031.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00697.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04047.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05507.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06331.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02040.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02619.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06906.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01492.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        0,
+        5,
+        10
+      ],
+      "submission_sha256": "19c892ec57954888b24922e2f11619ac4df7d8268ff7d1fa9808464030d65051",
+      "xml_sha256": "9a66446100c7245ee7ce1961eb3c818ddc75dacf1e59054b462e1854821f58b6",
+      "previous_response_sha256": "5810797ff4e7f4e312c0509fc9da8fd9293da8f85d71f24f1b8d7e37f33af915"
+    },
+    {
+      "file": "suspicious-document00297",
+      "partition": "train",
+      "truth_segments": 2,
+      "truth_sources": [
+        "source-document00031.txt",
+        "source-document02125.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document05039.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05599.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01261.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00142.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02306.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04736.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03686.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02852.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00302.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04791.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10,
+        0
+      ],
+      "submission_sha256": "4f91b212a0ae2f2fe91007d1b17faf951238c8634713aee5e540fe76bdfab117",
+      "xml_sha256": "4113d1378a65c8973f90ba7f4274f537e0475cc9b936fa12b08a157ae1b898ea",
+      "previous_response_sha256": "0d3b2768eb07e62b6df4b6cdacbb3442574269193329387e0231343374f2d0a4"
+    },
+    {
+      "file": "suspicious-document00320",
+      "partition": "train",
+      "truth_segments": 58,
+      "truth_sources": [
+        "source-document00738.txt",
+        "source-document01958.txt",
+        "source-document02099.txt",
+        "source-document02263.txt",
+        "source-document02290.txt",
+        "source-document02619.txt",
+        "source-document05437.txt",
+        "source-document06247.txt",
+        "source-document06492.txt",
+        "source-document06652.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document04678.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01070.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05342.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00071.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06018.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document05945.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00150.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04448.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04971.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document07058.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        0,
+        5
+      ],
+      "submission_sha256": "2e55f562a3e2e1ed6008ce526d5e303f1608cc01e529cb44e667085ce8c76e90",
+      "xml_sha256": "59350682550adc320b9243a8f08d1e08227a996e20270c0e91eb69be64edccc6",
+      "previous_response_sha256": "0fe653f9b010c634bbbc43da84e9efc95ed9130410a89dbae15c434c94e21253"
+    },
+    {
+      "file": "suspicious-document00202",
+      "partition": "train",
+      "truth_segments": 0,
+      "truth_sources": [],
+      "noise": [
+        {
+          "source": "source-document01924.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06080.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document07013.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03971.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01317.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document07155.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06264.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02498.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03168.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01313.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10
+      ],
+      "submission_sha256": "1c5984854a22787c50c70320d944ad9d38420176c85e59dde62a1abfe6a359a1",
+      "xml_sha256": "4a934fc8ea3e28911e22442f17d170eff9d078e5e3ceddb9404182ebeb093d93",
+      "previous_response_sha256": "7be583efa32cf139b623d1940de94f2c6ca9d8f3473722b44a7d7bf17c884501"
+    },
+    {
+      "file": "suspicious-document00093",
+      "partition": "train",
+      "truth_segments": 3,
+      "truth_sources": [
+        "source-document02094.txt",
+        "source-document05404.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document06008.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02723.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00479.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06307.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04917.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04283.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04630.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01966.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04736.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01403.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10,
+        0
+      ],
+      "submission_sha256": "bd8ca5738e6392e970b6142047dfe6993b0c18f4e8b590b637c7505fbb75db74",
+      "xml_sha256": "8d22f27434a919f311303ca84943bde6d077cf3235077af1dad4b3ab36258ace",
+      "previous_response_sha256": "7224b8d4914f8dd2961478905b17c01cefb2921689a516c599764deb8d4a34a7"
+    },
+    {
+      "file": "suspicious-document00117",
+      "partition": "train",
+      "truth_segments": 2,
+      "truth_sources": [
+        "source-document05440.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document02765.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06331.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01585.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document02295.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03848.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document05808.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02040.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03158.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03690.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06803.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        0,
+        5
+      ],
+      "submission_sha256": "d1e66615b79e50c19ef67b46739944e282c9d32ab75f61b182f29fe7913b6bf2",
+      "xml_sha256": "aec2854080465745ff999093e9c9c8f682aa7e5f12384448e9a56298eb517a58",
+      "previous_response_sha256": "b434f9f3cb584c05be520351705a4a78fd53475367e93e1b9bff91de342f130a"
+    },
+    {
+      "file": "suspicious-document00041",
+      "partition": "train",
+      "truth_segments": 3,
+      "truth_sources": [
+        "source-document01921.txt",
+        "source-document06528.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document03923.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00753.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03839.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00611.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01966.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01961.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05382.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00513.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01689.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05514.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        0,
+        5,
+        10
+      ],
+      "submission_sha256": "e746429d9ae018d4346c9e91af4d032f24e3832a032ae9c77e4fd41b09bbd1aa",
+      "xml_sha256": "28c5625aed0144e84e0369ef2e41d18766b63088f3e3866cf55a1ae50f90bea3",
+      "previous_response_sha256": "a13dd29a4f836ba0bd41f5f01b69d50e71d8f40783e6687162e7cea446938342"
+    },
+    {
+      "file": "suspicious-document00322",
+      "partition": "validation",
+      "truth_segments": 0,
+      "truth_sources": [],
+      "noise": [
+        {
+          "source": "source-document01879.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03168.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01263.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06264.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04469.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00031.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01534.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01823.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06080.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04273.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10
+      ],
+      "submission_sha256": "edb75765b4b7acfb9901b19fa6e7fc8484d771da729bacd352b4e17846ad6086",
+      "xml_sha256": "900286d01aaffac6ff66073785cdb8629caea4876723f494adb83344b852af8b",
+      "previous_response_sha256": "91162fdc646a5d8c88f09674bf8cbe2ebbab596aa48bd0e7fd3dde946d2e7aee"
+    },
+    {
+      "file": "suspicious-document00130",
+      "partition": "validation",
+      "truth_segments": 6,
+      "truth_sources": [
+        "source-document03698.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document06520.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01534.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document07140.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03923.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03417.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06006.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01217.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01578.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06080.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05750.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        0,
+        5
+      ],
+      "submission_sha256": "53bd4b24fd590e70716c7e0c8caa0fc1af671d251702dd9a471138054882aef1",
+      "xml_sha256": "1f85dff7a0781b92947d18cd01df0878abb007c86c5ab32c91b3379f04a84d42",
+      "previous_response_sha256": "a313757fb3f6e701ce5765e4cecf2d89f6299e5fa62a4cb6b7a5b1b300f14f14"
+    },
+    {
+      "file": "suspicious-document00241",
+      "partition": "validation",
+      "truth_segments": 3,
+      "truth_sources": [
+        "source-document00491.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document00777.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04243.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02936.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00510.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00418.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document04734.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03700.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02306.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document06472.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00912.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        0,
+        5,
+        10
+      ],
+      "submission_sha256": "a6499a63e2850b12ddd2348875c186a09b0abc935f198e78cbbfa33bcdb42ece",
+      "xml_sha256": "b8d4867a749ab0a4a6d2a838828d302751ef1380aae8aeb4acfc34af00beb96e",
+      "previous_response_sha256": "cc1607c107bfc66c9d0eb1020d3fc9cff53d564502bef9d05e4f44ca23bc0855"
+    },
+    {
+      "file": "suspicious-document00160",
+      "partition": "validation",
+      "truth_segments": 4,
+      "truth_sources": [
+        "source-document01803.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document00142.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03574.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04649.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00031.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01331.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00302.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01689.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06329.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00749.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00174.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10,
+        0
+      ],
+      "submission_sha256": "20178f92af562fd537faf6b09362385170feb8da0b902bc2a0efa9cce38387b4",
+      "xml_sha256": "398a73ca68d5dc9775edc32937120122e45c6116103b8fc27e276a0aad2e7a18",
+      "previous_response_sha256": "35ad3c9c9edeeace51c8eb82f8b9d104a2e3596baf31f2296dae2e8da7d89441"
+    },
+    {
+      "file": "suspicious-document00119",
+      "partition": "test",
+      "truth_segments": 0,
+      "truth_sources": [],
+      "noise": [
+        {
+          "source": "source-document02400.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04736.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04352.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01534.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03032.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03923.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04448.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03576.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document07155.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04742.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        5
+      ],
+      "submission_sha256": "56b63c8392721b8da1128b5f08e225e29f71ecf0993e7faae7dfe4eb1e440a8c",
+      "xml_sha256": "69d9313c4f13a90737cfbb44df93d8608b9eeb5d99f09e0c5b4008d34967434d",
+      "previous_response_sha256": "a295a1e319f312ffcfc0eeb4fa8ee8f5e9e1c064cf98e08fcab25f250e080c6d"
+    },
+    {
+      "file": "suspicious-document00280",
+      "partition": "test",
+      "truth_segments": 4,
+      "truth_sources": [
+        "source-document02172.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document05491.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02040.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00203.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document02196.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06708.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document05382.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document05945.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01854.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document05795.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06845.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        0,
+        5,
+        10
+      ],
+      "submission_sha256": "1f923bcf52584dd25236e230b14726b49e94b77bff8e8008e25b5456b07f63a5",
+      "xml_sha256": "8204e0b9f60c7083fa298d86ab242f8c3f2882062e84ff77f37c1c0e154ec2fe",
+      "previous_response_sha256": "ebdb1a1d4271ec22c6ee8e3707374fc006c754c528657dbdf7b1840cecce75a3"
+    },
+    {
+      "file": "suspicious-document00138",
+      "partition": "test",
+      "truth_segments": 12,
+      "truth_sources": [
+        "source-document03032.txt",
+        "source-document06061.txt",
+        "source-document06329.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document01534.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00142.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document04153.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document03423.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01633.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01879.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06364.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document06356.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document02245.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document01475.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        5,
+        10,
+        0
+      ],
+      "submission_sha256": "a5fe220b27eb9d44b1249c61a8b40b0431e67f70dc730eb089a96f30d3df07d0",
+      "xml_sha256": "2f0730f2de5ecec0a847d4c30124f3ed672d981fc7ed8b1dd61990776b3b7eaf",
+      "previous_response_sha256": "d7c62f112a207b5a66affe51946e477e587e55c4b303848830c68bcbffb05ba3"
+    },
+    {
+      "file": "suspicious-document00319",
+      "partition": "test",
+      "truth_segments": 4,
+      "truth_sources": [
+        "source-document03279.txt",
+        "source-document04838.txt"
+      ],
+      "noise": [
+        {
+          "source": "source-document04947.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document03094.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00822.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document00031.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00502.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document01534.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document02196.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document00212.txt",
+          "kind": "seeded_random"
+        },
+        {
+          "source": "source-document02349.txt",
+          "kind": "prior_shortlist_non_truth"
+        },
+        {
+          "source": "source-document07155.txt",
+          "kind": "seeded_random"
+        }
+      ],
+      "condition_order": [
+        10,
+        0,
+        5
+      ],
+      "submission_sha256": "6754e0bd94fcbec8cb440b415b71b2f0e4f1af78ed9194ee45ff6e584c6db1a4",
+      "xml_sha256": "f67a4c8ff251433f8ca644f71999d9bc0c43bf5752b1bc6504c67b3cb3056079",
+      "previous_response_sha256": "5d43bd6b9398767d511cfb65cc4310519a55bcbde1f695672998694fa2fcff37"
+    }
+  ],
+  "source_sha256": {
+    "source-document00031.txt": "0540a6f574d86b57f47a7e2740a2f8953c79ac4fa0155830971904e2022de0d1",
+    "source-document00071.txt": "8ea94018c44ca4e0ca855b1fca38c54d48ecb041259257a2fbac4fe72387b44e",
+    "source-document00142.txt": "4479cd7886236ff1d2aac385e52b270c00fb452f064b47e20692219fe75c6fc0",
+    "source-document00150.txt": "96d90783de5adca61d27a087a2b549fbd01a624fff0871dba32bc446bcabf752",
+    "source-document00174.txt": "517de47abd4648e98e89c13aced43eb4227016e04c847475236f5d5ed1dfde01",
+    "source-document00195.txt": "716d9daa46f2eb1df2ce4ae43e03e765baa45b5e1891bc27f5725945f6e81198",
+    "source-document00203.txt": "4a5c5d902f2105897da97e6102c116c62f1662bc9006404262a6af9a6facc758",
+    "source-document00212.txt": "9391e1b3314e3d0bb33d0e3e0b62147e5a1676e6256e3a0365b1adb813757eaa",
+    "source-document00302.txt": "4e48d2c70d4a9767fffcbd039e56421397f84dc7dd765e8aa115b09f9f7bad56",
+    "source-document00418.txt": "3b6fb7109df628952792515e4f63600c257777023d96fc66f4367d9e0bbadf2f",
+    "source-document00479.txt": "06530da2f911d7e65bb293584e78c248a28cc25fb0e1e4e95248d7fe926ae20d",
+    "source-document00491.txt": "16047a83e3e693b75119e2930b3c9f591ccbea694dd4f6e6fe90f15774e90d14",
+    "source-document00502.txt": "d35c7312ef59d540281cd58aebd28e8fa13970533ff04550ce76aa7cdceff54c",
+    "source-document00510.txt": "acf1ca437fd757beec1f638cc4716ad9fb2c938e8257fa29db8828b68d2aff1f",
+    "source-document00513.txt": "b5069c5bcdc0d9692f5ef14432d86c6ea72819832d7a2571855787186be1e485",
+    "source-document00611.txt": "86094b07bdbb0537fbada57807e1ba55d025b354c761ae38c1ffe138f0e3838c",
+    "source-document00697.txt": "3000386a1fdb60b0bfe594a312c45c6db4f1e4138e2da2db5c2eb1b84beceed1",
+    "source-document00738.txt": "8b7b7c5d060201fcaa105e89319bc0c0635af4d89becdc9431af22d93a14099a",
+    "source-document00749.txt": "e5cc922d26f1fcf6ad7489921c36b9f7f0d794caa8c4b75b072a543b67a3db03",
+    "source-document00753.txt": "be7571d1fe9fef7160d72f245f3067eccfb55abdc23fd99667a17f952f817c18",
+    "source-document00777.txt": "c635850bf7baea7a639fbfb61e026d8c4b7a269fe40b72ccc1e69684b1f9225f",
+    "source-document00782.txt": "c939909859653965c328f2e28acb6aec542453fde8b25808faf208177389f474",
+    "source-document00822.txt": "4e1e8f7c79725045a4c5e24b6b1760edbb43b48798800a116b6ba8bbfc8e3966",
+    "source-document00860.txt": "73a058ec86ba580ec1046c4d0d7c0259dcf2c09600d2f937fc801117bc33e6af",
+    "source-document00912.txt": "fe122b01eee8fb01d03ba8216849c52d75f378c53757d53e6dd7a04b58910e2c",
+    "source-document01059.txt": "39b4e9959756dcc9ab63891474096e4ed5c2e973f2aea1bf166d8237c92849cd",
+    "source-document01070.txt": "cfbe24d905365227b87e6f7d66adc52fbe03323cc12bf5b9b33ec324b49fc41a",
+    "source-document01077.txt": "2629d3c0116e31bc3a6254f9bd4c5453cae23eec213df8d1336e4b0da9f876f0",
+    "source-document01175.txt": "2e2a19aaff89b05d74a85be48b91268088a3a9ca5e87ea52d29a251acceebe2a",
+    "source-document01217.txt": "f5228ff101561f324780467bb464a84a6146b9a6efebc1e56652a23c64f18d83",
+    "source-document01261.txt": "23158dae65e78856bf2b0d575d0a68c3c76cf41102c22e0cf3289f2935a21197",
+    "source-document01263.txt": "a2844f07931ee4f8e2c89b0e74194a6a61808c19de0f805ddbada53d31a341c6",
+    "source-document01313.txt": "c4d25afbac383ba885eda604012a85fe1508880b903085543a20c8efeff95f1f",
+    "source-document01317.txt": "f733e6a885f936d0c93721a1f56fb9313ba91d3b2e0bae3484eeee47f927fbcc",
+    "source-document01331.txt": "cb4827b9d0449286214d370ee0fa1c1967936cf1ced541fa43a2b70a3b0c6069",
+    "source-document01403.txt": "4ae02d83fdbc0b7fdb02f8fb8dd5c0a8ed941878329b5fe6964ee43e325423ff",
+    "source-document01475.txt": "e5c112fc2311009c930ec6a77368bfdce72357b9e861b251cac633e4b34b5f09",
+    "source-document01492.txt": "ad754fc1f3b66d119cfb4fd5fc80242617a693f3acb51039dddfeb5de76d5788",
+    "source-document01502.txt": "94335ebf1c193cf009b7d33ca8064fe44623b511f6d001ac9e886604b7d46ed6",
+    "source-document01528.txt": "4cbcd4139142b7918c7a7f39786fdeffbc1afc37a678a08a9151a1ee7d1e5eae",
+    "source-document01534.txt": "21417faa3494d7fa5869a66a88263a8b14a1514e4c7d8a7ed7fe8faa5de527da",
+    "source-document01578.txt": "3f01aeeed95deec446dea567801befaf7c4b15b0fdd7c8490fbfa31bd4c389d8",
+    "source-document01585.txt": "1e40d2505f6509c1c2761e733e28f7ff3d0024cce26c364fd86bea9ca714d08c",
+    "source-document01633.txt": "517ebe2d259efaa395dc19a3139b4cf0b6b204640ff1d3b29ddd9c8f71893dca",
+    "source-document01689.txt": "cb6a51f3c99cc2c294ef941c9c366161d77532b3a99faab2e6334b7d7498c0de",
+    "source-document01803.txt": "6900d09966e91a9328a5a13192b1084ae1be15e15f882554fb9f94d88d0d959a",
+    "source-document01823.txt": "a1108f266b78b5ca93a18d98857fafd21b0d6f01a1dcc942bbcbef498775ec08",
+    "source-document01854.txt": "29e78a42915aa00014549bcbafdab004960a9a78fd5e0b75a75f6076260e8dac",
+    "source-document01879.txt": "d712504954f3322578989ef74eeab67952f4b2238c0d5de4c9a0373dd03819a4",
+    "source-document01921.txt": "2db18e40efd54f15be4e0a873461b7bccbbced20eb0e46a249224a38bf9762fe",
+    "source-document01924.txt": "6df03b5c4dd97f061f5d1f98f07a96ea579231df8fc8853c8583bf4c679a01f8",
+    "source-document01958.txt": "7c01301b0680178561c645bba676f3782d9be79d8ad17705702d4a1a1c373282",
+    "source-document01961.txt": "beb1a2b9a838b7e55a852fc5b4a12846c7b84691b312ff269c2eec2439d2f06f",
+    "source-document01966.txt": "188979ae205c7a5059c865610ac1068e951de7d00fc562a45e1eb0c9dded67ca",
+    "source-document02002.txt": "f3559222c4edea39a9110813021f71fc86fb0eadc195c7f7e581d3fa17d96d9d",
+    "source-document02033.txt": "5914b08d22c9af537e6aee84eea417dbce424a0c42ed41b4347a2748674f2699",
+    "source-document02040.txt": "77375d26c6c31c2b6f43220a9d00e58e06ae10a91aa1deefea86fe9152ecd9f5",
+    "source-document02063.txt": "63183960816fdac4fb42014d6612d879227cde0cd0f1fbe25b47f68eb07b31b5",
+    "source-document02094.txt": "52d545a5e01c9a26dc897f8c81a9ece419f3952049db7f2b2333b5ebb64a5ba3",
+    "source-document02099.txt": "c91ce8f4146c7caa23e1dc05cb140b49d1e26c3a8a5c3a6a9539fc9f4d41e260",
+    "source-document02125.txt": "e3a30e32af217c5964a2416b0ce07ce5434076ee62b40dc171852b864324282a",
+    "source-document02172.txt": "d9dc9610b507905499fa7dc3837d478b617933faeaa0692d92346d709bbc092f",
+    "source-document02196.txt": "a951111b430a121c1630290fd186b710537caa3c1eb99a9ba7a0dc4df508dc61",
+    "source-document02245.txt": "5c99524a0d7ece66a9fa7cccf0ab5737540322a5c8dd2e761d39809aaa42233e",
+    "source-document02263.txt": "b6ff092f538805539f22a5eb8c7b4c73d7a5b41495cd23de30c3ea73e9245cd8",
+    "source-document02290.txt": "fc80a73bb7757a3f40b92746f60f16a59dd530cd1fcf512615048971441afaba",
+    "source-document02295.txt": "2503c21f48d26db1e359512808572731abda3aef184d45da3eeeaad1a33388d2",
+    "source-document02306.txt": "e5d08b2fb1a1a969a8a023bb4b1f37d888b2ead5f01b56e39c63da8141ee6654",
+    "source-document02349.txt": "b1152ba137796b7134f08f2b93b1cd8fd440fe03339d11bcdfd0d2a914ca288a",
+    "source-document02400.txt": "967be2723020600dcbdaf6d2202b8b6e64b0394fc5b646b3fbb957d39b11b67f",
+    "source-document02498.txt": "eea74e75c602b6fd1b701b9a79ac3f41c15532ed847a314243b5a4a54644233e",
+    "source-document02619.txt": "230382bd1533413423c849a205e376fc3488b2a85add538d292e1d050632967f",
+    "source-document02723.txt": "ef92ceec01dabd0af8fa68ebf52f7e784b7ce5a8fbc7f06b0bff48716675146c",
+    "source-document02765.txt": "43c138bca9417ee7aa943d4db0284d2c624241bc036c891b6dd6f2ed1ceea49f",
+    "source-document02852.txt": "261572f500d7f9ef30d2d8529476dae5d03e31951ac6adf7f5c00095e6cf3a26",
+    "source-document02936.txt": "ea91f49c9f6ae105a2728d02847681e3452091a960691dbed718371cf1f74f84",
+    "source-document03018.txt": "4791f818b15b5d179019178548bb7a571a8ea84817bd63f71d081151e3a0a238",
+    "source-document03032.txt": "8dfac823de72f5fb15571270c736e480e8b4819e460f6a5ceb4cfa82b2efa668",
+    "source-document03094.txt": "aba45c92c85f573dca2d7488a8198b1133cff8949f60161ead262dd220dd02aa",
+    "source-document03109.txt": "c62f404646cf2c6b9d2ae2f95a0be93762e122788d733d729a465d09c2d7c065",
+    "source-document03151.txt": "811cb485288ee685c21ec3f40224a0fc3c26a168ec19d74784c24e4c19cbe31a",
+    "source-document03158.txt": "1cf99793248aa362d5f6f176d994f176e101e07cbbef3da8a03d9bde0941de53",
+    "source-document03168.txt": "741f76f8b69a7ca5bf26e594dd36ec7b97b637adfdb27de1b37ca36eb89faf10",
+    "source-document03279.txt": "81db7ad9b1c52fadfa6fe7192e9b6512180e7f76d04be8f50f44b705b2242bdb",
+    "source-document03417.txt": "7dd0565fc54e65d490cff69e278eabe047735c662640e54c7347237c9a6e73af",
+    "source-document03423.txt": "f3569bee0d447984c9d945b690d382efbce156545ea44f7fdbf27be27ab43801",
+    "source-document03574.txt": "b316a82d1238e75ee0e3c0cae829dcd96323be08cdf7e51547deeac587cd7ea6",
+    "source-document03576.txt": "990021a432345344fd2e4a1f280a980a792a3793954a3f6cbe19791f0efe041f",
+    "source-document03686.txt": "147da0fe7e6404eb5e7a6ee9f7a84eeaec6518071ee0061424cd190a962f2036",
+    "source-document03690.txt": "32fa9382b88aaf5cb5e5f48d3105b92d0bbf9a017647d88060e2db53913d3d11",
+    "source-document03698.txt": "1ea798f795423728bbe5b68b317091c4573c38baa3129036937147b10aa2c521",
+    "source-document03700.txt": "4ffa56e99a03f9ea0628f32049e7e6a57394445753b25c141f53377a116beeb5",
+    "source-document03839.txt": "53edc97592061eb09dd23370f25d1f2a011418176fae3841e43791a36f549765",
+    "source-document03848.txt": "ebdd009d4e2d747220f74fa61ae0732d62eb72674d104e4e53fce813f24f1ff0",
+    "source-document03891.txt": "00af879f0c977661f39373942dd4b4ec101da0868cde643c2fffbe2a7bab3bf1",
+    "source-document03923.txt": "ee17cd525c91edfa5d0da7b4f98e251aa717472e6fa082f9db879cfa171c83c4",
+    "source-document03971.txt": "67ca1cdf2c247d5589f21a61a0816b650f3af4c10de6f8ad60f25ef5a90a3a2b",
+    "source-document04047.txt": "927d1634a0a374388258a48fb5f142f3760f96672794939c3454538de030806f",
+    "source-document04153.txt": "f4787947d6f1eea67ef728fc511c5a855ca729d5b0ecd10fc8be4d4ad061fcea",
+    "source-document04243.txt": "2e8ad403f0342fd64b402e53092382b0bbd68c787aad534b1eaf52cd3ef5718a",
+    "source-document04273.txt": "b3df8a455613e60f22466babb8d51d6f15db186f8518d6030fa8f9de7b770119",
+    "source-document04283.txt": "c565c5693bba63c5ab485624dea460d76e287ecd806fcf44ac3687c45b01e427",
+    "source-document04300.txt": "ad7f4ed73646fcda125657fec6b945a782d4837a526f5818bbf96817d656540b",
+    "source-document04352.txt": "81c29a85822c4b07a9ccd2acb7494caf98d22c3093ceb5d42907c41fa1443284",
+    "source-document04448.txt": "61cac806ecac2ab02d349db6777b4b6887aec6b0592da99441c6f133c4c64291",
+    "source-document04469.txt": "0d811bcbd992adc1ad00d47c6ea14fb3658009af5d57bc39b3a8d4d087c75fe3",
+    "source-document04630.txt": "6188d2e408f72b6df7e8c5cc97e719c3b4cbe06eadff93d6d97a7a5540066395",
+    "source-document04633.txt": "ce16549b0c40fcf0320dd1db4ed54b795a04c5b5916cbd372f3c70e502e6c9fc",
+    "source-document04649.txt": "aa3b455b6dfaadaf4b8dcccd63c132129a86d284522b9d2566e82a61b69f5a92",
+    "source-document04678.txt": "72052875a51eae12f69ba5e504bb7eac0b2c7f8baa4ea9456d93730e0710afd4",
+    "source-document04734.txt": "25ee5896b1581e4dc5a6ac7c2869a694492dc6ff314e0737bf6df6bb6d9d7b87",
+    "source-document04736.txt": "7fc0abaa92162a24b33b3b9750ba3f876a88d3f86b511ceab658c01fbea4b052",
+    "source-document04742.txt": "caf8e831f062fb9c841d1cd3f9cf71ed1d803926821f7353b6e93d668a552f46",
+    "source-document04791.txt": "9b347cbd1d5813db1c812cded9e88ee62d409ceaa1c0ceb8e55fcd09ba3255b2",
+    "source-document04838.txt": "d5ff6f8ed4992e4289f2228726260fbeae6b5f82e31922e730945944bf235fa7",
+    "source-document04917.txt": "8f61535b69c76643a78137e77256104fdc0c70dda29df12121f7cfc0b95836be",
+    "source-document04947.txt": "b9ab2fb4c9674a0b97a0bb2c543dc71633f12f3cf60d43faeb0aa1c86923cfbd",
+    "source-document04971.txt": "f1b4d1385c95989501d0cafb09e682ec68cd0765e56ebd647b34555dbb226239",
+    "source-document05039.txt": "564d12731f5f114b09085b8c0ab6e2331dc47791a9e698f20103437e64548bf4",
+    "source-document05209.txt": "112b66603ef60d2dd0821e3ca3ea5d0b531fd89b75940df531dd0b59968a2320",
+    "source-document05342.txt": "daba003ff61d92bfb5e51229ad6dcbcf1ce1253ab372a411984d302005041f8d",
+    "source-document05382.txt": "f999241f98245961aad868cfbf5cc85f475988b171ce3d4288ab580339d12a87",
+    "source-document05404.txt": "842e2f03fd642e62c0db077a4249f928215abbe48cff3a3cbb89467d342cad43",
+    "source-document05437.txt": "d630861f1bf8ce0dbbda7e8349f042645be32592b3adb5b65ae1c828db332568",
+    "source-document05440.txt": "8a3b8e2e388cfa82553988cd26c6b01c5dc8fe240a1beefa2efd867b58e845ec",
+    "source-document05491.txt": "c764c5e6c9a0f727754bfa7aafc316f766c9c4ae3cfcf76f53be768cb4997427",
+    "source-document05505.txt": "114224c2dd239130ab9076ceb87f9bd4597c2ecd7b110fc84968401bdaaa4b69",
+    "source-document05507.txt": "dca77fd6c6edfc548ccfd643ca47c328670328000766e60bfa878cabe9677613",
+    "source-document05514.txt": "301e17333702460ad74c9f8d718d005fe054c953c34fec5748a48e39bcb9a9c6",
+    "source-document05599.txt": "811c16a9a2834cd39e9a140899c3203bbdc97a4bfdb23aebe4c9c824b582091b",
+    "source-document05719.txt": "43b1195f79b209915ec37d116bdb77e6e71a741f943cf6e3e68ee817e6496012",
+    "source-document05750.txt": "ac269bb331ef118735a0908d6b8b8783aa15c5978a07e3fe865742f97cd4d32e",
+    "source-document05795.txt": "00ac7083e6e5f0c73c464cf8b1bc5ebb39241057ba3c13e0fbbb824d847d37bf",
+    "source-document05808.txt": "6d22ee344635d08ced7173f30da80d640035963cc38b5bd659f93a1daccca40b",
+    "source-document05922.txt": "09dfdd062eea29838a3c2dadf0f231721e7aac2288ec419ddfa9ca58402e8ac5",
+    "source-document05945.txt": "4df83fe8324e3dadc6e8e557a80d7c61f12a924bc9e9247e28c74db6176260df",
+    "source-document06006.txt": "147a9b3f34dc42b3b53d223e3794517de46f92f212d9eb2fb044251d752bea68",
+    "source-document06008.txt": "af8c2b7c6ec25bead8c37df0121eb1f1e1446d65ac56bc24d95b265d82ec6dc1",
+    "source-document06018.txt": "3c80312cbd8e0d7186fb0da1a06f8c335d834d4fdbc2fc28b47f56de6d7e0923",
+    "source-document06061.txt": "84449ac707c771f0d9f8d1063fbd2cdde1abbc611fa123126c8b5c1b16e98e68",
+    "source-document06076.txt": "3b457481a5bd1192b2078a38b27bcb44001e86c0a89644a42ba620c7743dc82f",
+    "source-document06080.txt": "547ba54208018adb2b2e83290ef5dcabb5c760b789993163d580443e05250182",
+    "source-document06107.txt": "28b468303f99f5ab0b5b36ffe1c62c249c80d1b220b1ef17e2e96ecc2b12ce2e",
+    "source-document06247.txt": "b74e140a58d5621da35fb32c6c0b5a62db8f2c91e8707b35d0f38c8cd6f0d800",
+    "source-document06264.txt": "d06482df3cea44da366f44d1c682d59f84856a61ceabccb4cd29139711652dd4",
+    "source-document06307.txt": "10fcf7e94f24af1204179ba442c73ff7de0573342230f048ceeddc5591102340",
+    "source-document06329.txt": "5cc0577485f6a1e774e86b6d2be95071615163077d7f69c86d75fb4d678039e8",
+    "source-document06331.txt": "004f54b52b6da4b3a913c8c2ec508279736c4db7d7465c91b46ce892de99aa71",
+    "source-document06356.txt": "b314d501c73057b4655b98e87942054e3960f02dcacf78500923f9ef5d60cd60",
+    "source-document06364.txt": "6967cc835af69f67add9110355e40908e2551b1c2af135c20d3d58b3de12dc85",
+    "source-document06472.txt": "172b9cd18eb4bd0c35f021eff6fea0d83f5aa0f5b1785657a9e48a7d4353798d",
+    "source-document06492.txt": "e3768bba38f97da00d2e40c7ca9221c264ea85bbc6a5448e2e9dc6ad3f0d7294",
+    "source-document06520.txt": "08465354ecef7db43f70a67b58cb6e7da75fb642528c0e173e10b3c900544065",
+    "source-document06528.txt": "6d4327fd639dd640241a9007a76e1592e782dc937ebbdac4b4945fd944ffe021",
+    "source-document06542.txt": "b8b4c6fc346449ef8b3a10dfc30cf7d7a562298a4f32c60e75404e16d1b12529",
+    "source-document06652.txt": "feb3447a4585d11b2dd817cdd6b2b574ee21acbae06e2476edde402ae0cd8997",
+    "source-document06655.txt": "98c24684205cca8a21ff0d22a0cd6fdaa49313dacf47a591916b79bd85c21e1d",
+    "source-document06708.txt": "891c2362ebda7981efad955fc96ddf5caeaab02b4c929263bb7b0d183f8a4bc8",
+    "source-document06717.txt": "15812fd9ae619035fa4510f51e923ce380a438427763b3e4253068185883d124",
+    "source-document06803.txt": "71655af0dfce6110d3f1006fbe076fa579bf748243c9f85f528fc44749293ae1",
+    "source-document06845.txt": "aef26e954e325d1e8ef91a7e5e6010e794c9371847c6ce4bb377144761105954",
+    "source-document06906.txt": "51e09052433a859be1b9b65d559a73509c1ef65b57cca1b3d59d42bf7643d334",
+    "source-document07013.txt": "9a01dd8b49693d725f264ee1ce9e7eb87317f962f2a808ef0c1a9fc187325582",
+    "source-document07058.txt": "bb1ea51d8f3114d27760585109cb59f1f3905d808a02d4b7ea4e4032426d307c",
+    "source-document07140.txt": "726ce32bc9c0076f811e8a324dd42688aac7b278dc5f80d75cbc16be07a5ec76",
+    "source-document07155.txt": "3b6897676ea1cd5106115645271e88eb7df4cc8caf712ffd317b75658544f56b"
+  },
+  "evaluator_sha256": "c90930825b32a0bdfe352edfd425822b9deab9aec9ddba2ef934281a55a97b5d",
+  "task6_scorer_sha256": "70cac03aa0a0618e9c60098db98a38642d62f008fefc35d530da2b5c3ee8102c",
+  "config_sha256": "bae2e5c157fe046e9077ace95b2e0e79baa84b7b7fb7990d74fa4ed8ae7fa709",
+  "notes": [
+    "Oracle uses whole source files, never XML text spans as input.",
+    "All forced candidates are compared; faculty/hybrid retrieval is bypassed.",
+    "Noise means not annotated as a source in this submission XML.",
+    "Hard distractors come from this submission's previous top-20 results.",
+    "Ten-noise condition includes the same five-noise sources.",
+    "Pure oracle is not applicable to negative documents: no sources to compare.",
+    "One sequential request per condition; rotated order, mixed natural cache.",
+    "Source count and source text lengths differ, so latency is descriptive.",
+    "Fixed 18 documents reused for diagnosis; this is not a new held-out test.",
+    "No model, detection thresholds, or evidence selection tuning.",
+    "Character precision not measured: original-offset mapping is required."
+  ]
+}

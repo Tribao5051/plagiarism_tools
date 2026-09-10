@@ -1,0 +1,36 @@
+{
+  "started": "2026-09-09T21:08:46+0700",
+  "health": {
+    "status": "ready",
+    "device": "cuda",
+    "sources": 614,
+    "vector_db_chunks": 187483,
+    "index_version": "bge_m3_semantic_potion384_v1",
+    "chunking_strategy": "semantic",
+    "faculties": {
+      "pan-evaluation": 614
+    },
+    "default_retrieval_strategy": "shortlist",
+    "default_evidence_profile": "agreement",
+    "evidence_profiles": [
+      "agreement",
+      "all",
+      "balanced",
+      "high_precision"
+    ],
+    "scan_serialization": "single_gpu_worker"
+  },
+  "script_sha256": "30ca53344f10f69a710c75175b80826cb768eebba71f1f2426792f8f1d26466e",
+  "python": "3.12.5 (tags/v3.12.5:ff3bc82, Aug  6 2024, 20:45:27) [MSC v.1940 64 bit (AMD64)]",
+  "ram_bytes": 25459482624,
+  "cpu_logical": 20,
+  "cpu_physical": 14,
+  "gpu": {
+    "gpu_util_percent": 3.0,
+    "gpu_memory_used_mb": 2590.0,
+    "gpu_memory_total_mb": 4096.0,
+    "gpu_temperature_c": 56.0,
+    "gpu_power_w": 12.56
+  },
+  "cache_policy": "Natural API cache; conditions rotated by document; no resets."
+}
