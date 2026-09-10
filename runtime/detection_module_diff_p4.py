@@ -784,14 +784,36 @@ def _assign_agreement_scores(candidates, results):
             )
 
 
-def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
+def _phase7_candidate_key(namespace, candidate, candidate_order):
+    fields = (
+        namespace or "",
+        candidate.get("source_file") or "",
+        candidate.get("type") or "unknown",
+        candidate.get("student_start"),
+        candidate.get("student_end"),
+        candidate.get("source_start"),
+        candidate.get("source_end"),
+        candidate_order,
+    )
+    payload = "\x1f".join(str(value) for value in fields)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+    return f"phase7-{digest}"
+
+
+def select_display_evidence(
+        results,
+        profile=DEFAULT_EVIDENCE_PROFILE,
+        *,
+        trace=None,
+        trace_namespace=None):
     """Phase 7: rank and de-duplicate passages for user-facing output."""
     if profile not in EVIDENCE_PROFILES:
         raise ValueError(f"Unsupported evidence profile: {profile}")
 
     candidates = []
     for result_index, result in enumerate(results):
-        for evidence in result.get("consolidated_evidence", ()):
+        for evidence_index, evidence in enumerate(
+                result.get("consolidated_evidence", ())):
             candidate = dict(evidence)
             candidate["source_semantic_coverage"] = (
                 float(result.get("semantic_coverage") or 0.0) / 100.0)
@@ -802,6 +824,34 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
             candidate["confidence_level"] = level
             candidate["confidence_reasons"] = reasons
             candidate["_result_index"] = result_index
+            if trace is not None:
+                candidate_order = len(candidates)
+                candidate_id = _phase7_candidate_key(
+                    trace_namespace, candidate, candidate_order)
+                trace_entry = {
+                    "candidate_id": candidate_id,
+                    "candidate_order": candidate_order,
+                    "result_index": result_index,
+                    "evidence_index": evidence_index,
+                    "source_file": candidate.get("source_file", ""),
+                    "evidence_type": candidate.get("type", "unknown"),
+                    "student_span": [candidate.get("student_start"),
+                                     candidate.get("student_end")],
+                    "source_span": [candidate.get("source_start"),
+                                    candidate.get("source_end")],
+                    "confidence_score": confidence,
+                    "agreement_score": None,
+                    "selection_score": None,
+                    "rank": None,
+                    "status": None,
+                    "rejection_reason": None,
+                    "blocking_candidate_ids": [],
+                    "selected_count_at_decision": None,
+                    "source_selected_count_at_decision": None,
+                }
+                candidate["_trace_candidate_id"] = candidate_id
+                candidate["_trace_entry"] = trace_entry
+                trace.append(trace_entry)
             candidates.append(candidate)
 
     rejection_keys = (
@@ -819,12 +869,74 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
         {key: 0 for key in rejection_keys} for _result in results
     ]
 
-    def reject(candidate, reason):
+    def trace_decision(
+            candidate,
+            status,
+            reason=None,
+            blockers=(),
+            selected_count=None,
+            source_selected_count=None):
+        if trace is None:
+            return
+        entry = candidate["_trace_entry"]
+        entry["status"] = status
+        entry["rejection_reason"] = reason
+        entry["blocking_candidate_ids"] = [
+            blocker["_trace_candidate_id"] for blocker in blockers]
+        entry["selected_count_at_decision"] = selected_count
+        entry["source_selected_count_at_decision"] = source_selected_count
+
+    def reject(
+            candidate,
+            reason,
+            *,
+            blockers=(),
+            selected_count=None,
+            source_selected_count=None):
         rejection_counts[reason] += 1
         result_rejection_counts[candidate["_result_index"]][reason] += 1
+        trace_decision(
+            candidate,
+            "rejected",
+            reason,
+            blockers,
+            selected_count,
+            source_selected_count,
+        )
+
+    def rank_key(item, score_field):
+        return (
+            item[score_field],
+            item.get("evidence_count", 1),
+            item.get("verbatim_characters", 0),
+            item.get("semantic_score") or 0.0,
+            -(item.get("student_start") or 0),
+            item.get("source_file", ""),
+        )
 
     if profile == "all":
         selected = candidates
+        if trace is not None:
+            source_counts = defaultdict(int)
+            ranked_for_trace = sorted(
+                candidates,
+                key=lambda item: rank_key(item, "confidence_score"),
+                reverse=True,
+            )
+            for rank, candidate in enumerate(ranked_for_trace, 1):
+                candidate["_trace_entry"].update({
+                    "selection_score": candidate["confidence_score"],
+                    "rank": rank,
+                })
+            for candidate in candidates:
+                source_file = candidate.get("source_file", "")
+                source_counts[source_file] += 1
+                trace_decision(
+                    candidate,
+                    "selected",
+                    selected_count=sum(source_counts.values()),
+                    source_selected_count=source_counts[source_file],
+                )
     else:
         if profile == "agreement":
             _assign_agreement_scores(candidates, results)
@@ -833,6 +945,18 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
             "agreement_score" if profile == "agreement"
             else "confidence_score"
         )
+        if trace is not None:
+            ranked_for_trace = sorted(
+                candidates,
+                key=lambda item: rank_key(item, score_field),
+                reverse=True,
+            )
+            for rank, candidate in enumerate(ranked_for_trace, 1):
+                candidate["_trace_entry"].update({
+                    "agreement_score": candidate.get("agreement_score"),
+                    "selection_score": candidate[score_field],
+                    "rank": rank,
+                })
         eligible = []
         for candidate in candidates:
             if not _passes_evidence_profile(candidate, profile):
@@ -849,37 +973,47 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
 
         ranked = sorted(
             eligible,
-            key=lambda item: (
-                item[score_field],
-                item.get("evidence_count", 1),
-                item.get("verbatim_characters", 0),
-                item.get("semantic_score") or 0.0,
-                -(item.get("student_start") or 0),
-                item.get("source_file", ""),
-            ),
+            key=lambda item: rank_key(item, score_field),
             reverse=True,
         )
         selected = []
         source_counts = defaultdict(int)
         for candidate in ranked:
-            if len(selected) >= config["max_total"]:
-                reject(candidate, "total_cap")
-                continue
             source_file = candidate.get("source_file", "")
+            if len(selected) >= config["max_total"]:
+                reject(
+                    candidate,
+                    "total_cap",
+                    selected_count=len(selected),
+                    source_selected_count=source_counts[source_file],
+                )
+                continue
             if source_counts[source_file] >= config["max_per_source"]:
-                reject(candidate, "source_cap")
+                reject(
+                    candidate,
+                    "source_cap",
+                    selected_count=len(selected),
+                    source_selected_count=source_counts[source_file],
+                )
                 continue
             if not (
                 _valid_evidence_span(candidate, "student")
                 and _valid_evidence_span(candidate, "source")
             ):
-                reject(candidate, "invalid_span")
+                reject(
+                    candidate,
+                    "invalid_span",
+                    selected_count=len(selected),
+                    source_selected_count=source_counts[source_file],
+                )
                 continue
 
             candidate_student = (
                 candidate["student_start"], candidate["student_end"])
             duplicate = False
+            duplicate_kept = None
             competing_sources = set()
+            competing_kept = [] if trace is not None else None
             for kept in selected:
                 kept_student = (kept["student_start"], kept["student_end"])
                 overlap = _interval_overlap_ratio(
@@ -888,22 +1022,46 @@ def select_display_evidence(results, profile=DEFAULT_EVIDENCE_PROFILE):
                     if _same_source_evidence_is_duplicate(
                             kept, candidate, config):
                         duplicate = True
+                        duplicate_kept = kept
                         break
                 elif overlap >= config["cross_source_overlap"]:
                     competing_sources.add(kept.get("source_file"))
+                    if trace is not None:
+                        competing_kept.append(kept)
 
             if duplicate:
-                reject(candidate, "same_source_duplicate")
+                reject(
+                    candidate,
+                    "same_source_duplicate",
+                    blockers=(
+                        (duplicate_kept,) if trace is not None else ()),
+                    selected_count=len(selected),
+                    source_selected_count=source_counts[source_file],
+                )
                 continue
             if len(competing_sources) >= config["max_sources_per_region"]:
-                reject(candidate, "cross_source_competition")
+                reject(
+                    candidate,
+                    "cross_source_competition",
+                    blockers=competing_kept or (),
+                    selected_count=len(selected),
+                    source_selected_count=source_counts[source_file],
+                )
                 continue
 
             selected.append(candidate)
             source_counts[source_file] += 1
+            trace_decision(
+                candidate,
+                "selected",
+                selected_count=len(selected),
+                source_selected_count=source_counts[source_file],
+            )
 
     selected_by_result = defaultdict(list)
     for candidate in selected:
+        candidate.pop("_trace_entry", None)
+        candidate.pop("_trace_candidate_id", None)
         result_index = candidate.pop("_result_index")
         selected_by_result[result_index].append(candidate)
 

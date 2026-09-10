@@ -1,15 +1,14 @@
 """Paired PAN oracle benchmark. Writes only beneath --output; never rebuilds an index."""
 
 import argparse
-import ast
 import csv
 import hashlib
 import html
-import importlib.util
 import json
 from pathlib import Path
 import random
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -19,6 +18,8 @@ import xml.etree.ElementTree as ET
 import psutil
 import requests
 
+import evidence_metrics
+
 
 RUNTIME = Path(r"D:\hochanh\hk252\plagiarism_runtime")
 PROJECT = Path(r"D:\hochanh\hk252\doan\project")
@@ -27,9 +28,7 @@ EVALUATION = PROJECT / "evaluation_folder"
 SOURCES = PROJECT / "combined_test_corpus"
 SPLIT = RUNTIME / "test_data/reranker_experiment_split.json"
 SEED = 20260909
-PROFILES = {"semantic": {"semantic", "verbatim_semantic"},
-            "verbatim": {"verbatim", "verbatim_semantic"},
-            "mixed": {"verbatim_semantic"}}
+PROFILES = evidence_metrics.EVIDENCE_FAMILIES
 
 
 def read_json(path):
@@ -49,24 +48,7 @@ def digest(path):
 
 
 def load_scoring():
-    path = PROJECT / "evaluate_pan_side_by_side.py"
-    spec = importlib.util.spec_from_file_location("pan_oracle_evaluator", path)
-    evaluator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(evaluator)
-    # Load the exact pure Task 6 functions without importing the detector/model in the client.
-    reranker_path = RUNTIME / "performance/benchmark_evidence_rerankers.py"
-    tree = ast.parse(reranker_path.read_text(encoding="utf-8"))
-    names = {"prediction_text", "annotate_truth_matches"}
-    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
-    if {node.name for node in nodes} != names:
-        raise RuntimeError("Task 6 scoring functions are missing")
-    namespace = {}
-    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(reranker_path), "exec"), namespace)
-    helpers = {"threshold": evaluator.TEXT_MATCH_THRESHOLD,
-               "text_profile": evaluator.text_profile,
-               "containment": evaluator.containment_from_profiles,
-               "token_containment": evaluator.token_containment}
-    return evaluator, namespace["annotate_truth_matches"], helpers
+    return evidence_metrics
 
 
 def choose_noise(available, truth_sources, ranked, seed):
@@ -118,13 +100,13 @@ def build_manifest():
                           "previous_response_sha256": digest(PREVIOUS / (name + ".json"))})
     used_sources = sorted({source for doc in documents for source in
                            doc["truth_sources"] + [x["source"] for x in doc["noise"]]})
-    return {"schema": "oracle_noise_task6_v1", "seed": SEED,
+    return {"schema": "oracle_noise_two_sided_v2", "seed": SEED,
             "conditions": [0, 5, 10], "faculty": "pan-evaluation",
             "evidence_profile": "agreement", "encode_batch_size": 48,
             "documents": documents,
             "source_sha256": {name: digest(SOURCES / name) for name in used_sources},
-            "evaluator_sha256": digest(PROJECT / "evaluate_pan_side_by_side.py"),
-            "task6_scorer_sha256": digest(RUNTIME / "performance/benchmark_evidence_rerankers.py"),
+            "scoring": evidence_metrics.scoring_metadata(),
+            "reranker_benchmark_sha256": digest(RUNTIME / "performance/benchmark_evidence_rerankers.py"),
             "config_sha256": digest(RUNTIME / "runtime/plagiarism_config.toml"),
             "notes": ["Oracle uses whole source files, never XML text spans as input.",
                       "All forced candidates are compared; faculty/hybrid retrieval is bypassed.",
@@ -139,67 +121,65 @@ def build_manifest():
                       "Character precision not measured: original-offset mapping is required."]}
 
 
-def records_for(response, field, truths, annotator, helpers):
-    records = []
-    for result in response["results"]:
-        if field not in result:
-            raise ValueError("Response missing " + field)
-        for evidence in result[field]:
-            records.append({"source_file": evidence.get("source_file") or result["filename"],
-                            "evidence": evidence})
-    annotator(records, truths, helpers)
-    for record in records:
-        record["truth_ids"] = sorted(record.pop("truth_scores"))
-    return records
+def records_for(response, field, truths, scorer=None):
+    scorer = scorer or load_scoring()
+    return scorer.records_for_response(response, field, truths)
 
 
 def metrics(records, truth_count):
-    caught = sorted({i for record in records for i in record["truth_ids"]})
-    hits = sum(bool(record["truth_ids"]) for record in records)
-    precision = hits / len(records) if records else None
-    recall = len(caught) / truth_count if truth_count else None
-    f1 = (2 * precision * recall / (precision + recall)
-          if precision is not None and recall is not None and precision + recall else 0.0)
-    return {"truth_segments": truth_count, "caught_truth_segments": len(caught),
-            "caught_truth_ids": caught, "evidence_count": len(records),
-            "true_positive_evidence": hits, "false_positive_evidence": len(records) - hits,
-            "evidence_hit_precision": precision, "segment_recall": recall, "f1": f1}
+    return evidence_metrics.evidence_metrics(records, truth_count)
 
 
-def evaluate_response(response, doc, scoring):
-    evaluator, annotator, helpers = scoring
+def evaluate_response(
+        response, doc, scoring, evaluation_dir=EVALUATION,
+        source_dir=SOURCES):
     name = doc["file"]
-    truths = evaluator.parse_ground_truth(str(EVALUATION / (name + ".xml")),
-                                         str(EVALUATION / (name + ".txt")), str(SOURCES))
-    stages = {}
-    display = []
-    for field in ("raw_evidence", "consolidated_evidence", "evidence"):
-        records = records_for(response, field, truths, annotator, helpers)
-        stages[field] = metrics(records, len(truths))
-        if field == "evidence":
-            display = records
-    families = {name: metrics([x for x in display if x["evidence"].get("type") in kinds], len(truths))
-                for name, kinds in PROFILES.items()}
-    raw = set(stages["raw_evidence"]["caught_truth_ids"])
-    consolidated = set(stages["consolidated_evidence"]["caught_truth_ids"])
-    shown = set(stages["evidence"]["caught_truth_ids"])
-    available = set(range(len(truths)))
-    diagnostics = {"missing_in_raw": sorted(available - raw),
-                   "lost_by_consolidation": sorted(raw - consolidated),
-                   "lost_by_selection": sorted(consolidated - shown),
-                   "display_on_non_truth_sources": sum(x["source_file"] not in doc["truth_sources"] for x in display)}
-    breakdown = {}
-    for label in ("none", "low", "high", "translation"):
-        ids = {i for i, truth in enumerate(truths) if
-               (truth.get("translation") if label == "translation" else truth.get("obfuscation") == label)}
-        breakdown[label] = {"total": len(ids), "caught": len(ids & shown)}
-    return {"stages": stages, "families": families, "diagnostics": diagnostics,
-            "breakdown": breakdown}, truths, display
+    truths = scoring.parse_ground_truth(
+        str(Path(evaluation_dir) / (name + ".xml")),
+        str(Path(evaluation_dir) / (name + ".txt")),
+        str(source_dir),
+    )
+    evaluation, display = scoring.score_response(
+        response, truths, doc["truth_sources"])
+    return evaluation, truths, display
+
+
+def safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def query_gpu():
+    try:
+        output = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used,memory.total,"
+                "temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        ).strip().splitlines()
+        if not output:
+            return None
+        values = [part.strip() for part in output[0].split(",")]
+        return {
+            "gpu_util_percent": safe_float(values[0]),
+            "gpu_memory_used_mb": safe_float(values[1]),
+            "gpu_memory_total_mb": safe_float(values[2]),
+            "gpu_temperature_c": safe_float(values[3]),
+            "gpu_power_w": safe_float(values[4]),
+        }
+    except Exception:
+        return None
 
 
 class Resources:
-    def __init__(self, evaluator):
-        self.evaluator = evaluator
+    def __init__(self):
         self.samples = []
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.collect, daemon=True)
@@ -210,7 +190,7 @@ class Resources:
             self.samples.append({"system_cpu_percent": psutil.cpu_percent(),
                                  "system_ram_percent": psutil.virtual_memory().percent,
                                  "client_rss_mb": psutil.Process().memory_info().rss / 1024**2,
-                                 "gpu": self.evaluator.query_gpu()})
+                                 "gpu": query_gpu()})
             self.stop.wait(1)
 
     def finish(self):
@@ -220,16 +200,7 @@ class Resources:
 
 
 def aggregate(rows):
-    count = sum(x["truth_segments"] for x in rows)
-    caught = sum(x["caught_truth_segments"] for x in rows)
-    evidence = sum(x["evidence_count"] for x in rows)
-    hits = sum(x["true_positive_evidence"] for x in rows)
-    p = hits / evidence if evidence else None
-    r = caught / count if count else None
-    return {"truth_segments": count, "caught_truth_segments": caught,
-            "evidence_count": evidence, "true_positive_evidence": hits,
-            "evidence_hit_precision": p, "segment_recall": r,
-            "f1": 2*p*r/(p+r) if p is not None and r is not None and p+r else 0.0}
+    return evidence_metrics.aggregate_metrics(rows)
 
 
 def summarize(cases):
@@ -291,7 +262,9 @@ def render_case(case, truths, display):
 
 def save_report(output, manifest, cases, sections):
     summary = summarize(cases)
-    write_json(output / "summary.json", {"groups": summary, "completed_cases": len(cases),
+    write_json(output / "summary.json", {"schema": "oracle_noise_two_sided_v2",
+               "scoring": evidence_metrics.scoring_metadata(),
+               "groups": summary, "completed_cases": len(cases),
                "expected_live_requests": sum(len(x["condition_order"]) for x in manifest["documents"]),
                "completed_live_requests": sum(x["condition"] != "prior_shortlist" for x in cases),
                "metric": "Task 6: both submission and source text must match the same XML pair; every evidence with a valid pair is a hit; recall is union of XML IDs. Character precision unavailable.",
@@ -336,7 +309,8 @@ def run(output, manifest, api_url, scoring):
     write_json(output / "run_environment.json", {"started":time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                "health":health.json(), "script_sha256":digest(__file__), "python":sys.version,
                "ram_bytes":psutil.virtual_memory().total, "cpu_logical":psutil.cpu_count(),
-               "cpu_physical":psutil.cpu_count(logical=False), "gpu":scoring[0].query_gpu(),
+               "cpu_physical":psutil.cpu_count(logical=False), "gpu":query_gpu(),
+               "scoring":scoring.scoring_metadata(),
                "cache_policy":"Natural API cache; conditions rotated by document; no resets."})
     cases, sections = [], []
     expected = sum(len(x["condition_order"]) for x in manifest["documents"])
@@ -358,7 +332,7 @@ def run(output, manifest, api_url, scoring):
                 if request["candidates"] != candidates:
                     raise RuntimeError("Saved candidate set differs; use a new output directory")
             else:
-                sampler = Resources(scoring[0])
+                sampler = Resources()
                 sampler.thread.start()
                 start = time.perf_counter()
                 try:
@@ -406,12 +380,12 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(noise, choose_noise([str(i) for i in range(30)], ["0"], [str(i) for i in range(10)], 42))
 
     def test_task6_rejects_wrong_source_and_wrong_source_text(self):
-        _, annotate, helpers = load_scoring()
+        scorer = load_scoring()
         passage = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda"
         truth = {"source_file":"right.txt", "student_text":passage, "source_text":passage, "obfuscation":"none"}
         records = [{"source_file":name, "evidence":{"student_match_text":passage,"source_match_text":text}}
                    for name,text in [("right.txt",passage),("wrong.txt",passage),("right.txt","red blue green yellow pink black white")]]
-        annotate(records, [truth], helpers)
+        scorer.annotate_truth_matches(records, [truth])
         self.assertEqual([bool(r["truth_scores"]) for r in records], [True, False, False])
 
     def test_recall_union_and_negative_are_not_inflated(self):

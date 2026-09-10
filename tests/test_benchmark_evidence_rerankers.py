@@ -100,6 +100,34 @@ class BenchmarkMetricTests(unittest.TestCase):
         self.assertEqual(metrics["evidence_true_positive"], 0)
         self.assertEqual(metrics["evidence_hit_precision"], 0.0)
 
+    def test_duplicate_evidence_hits_are_not_duplicate_training_labels(self):
+        predictions = [
+            {
+                "prediction_id": "prediction-1",
+                "source_file": "correct-source.txt",
+                **record()["evidence"],
+            },
+            {
+                "prediction_id": "prediction-2",
+                "source_file": "correct-source.txt",
+                **record()["evidence"],
+            },
+        ]
+
+        metrics = benchmark.evidence_hit_metrics_from_predictions(
+            [truth()], predictions, FAKE_EVALUATOR)
+
+        self.assertEqual(metrics["evidence_true_positive"], 2)
+        self.assertEqual(metrics["evidence_hit_precision"], 1.0)
+        self.assertEqual(metrics["caught_truth_segments"], 1)
+
+        records = [record(), record()]
+        records[0]["record_id"] = "record-1"
+        records[1]["record_id"] = "record-2"
+        benchmark.annotate_truth_matches(records, [truth()], FAKE_EVALUATOR)
+        benchmark.assign_best_candidate_labels(records)
+        self.assertEqual(sum(item["label"] for item in records), 1)
+
     def test_metrics_name_evidence_hits_and_do_not_fake_character_precision(self):
         selected_record = {
             "record_id": "record-1",

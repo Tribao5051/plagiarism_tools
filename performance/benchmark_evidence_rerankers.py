@@ -4,7 +4,6 @@ import json
 import math
 import os
 import pathlib
-import sys
 import time
 import warnings
 from collections import Counter
@@ -40,14 +39,12 @@ from evidence_reranker import (
     select_ranked_records,
 )
 
+import evidence_metrics
+
 
 DEFAULT_SPLIT = PROJECT_ROOT / "test_data" / "reranker_experiment_split.json"
 LABEL_SCHEMA_VERSION = "student_and_source_text_v2"
-CHARACTER_PRECISION_NOTE = (
-    "Not computed: PAN XML offsets refer to original raw text, so character "
-    "precision requires an explicit mapping from normalized tool text back "
-    "to the original submission and source text."
-)
+CHARACTER_PRECISION_NOTE = evidence_metrics.CHARACTER_PRECISION_NOTE
 
 
 def parse_args():
@@ -102,25 +99,8 @@ def validate_experiment_split(split):
 
 
 def import_evaluator(evaluator_root):
-    evaluator_root = os.path.abspath(evaluator_root)
-    if evaluator_root not in sys.path:
-        sys.path.append(evaluator_root)
-    from evaluate_pan_side_by_side import (  # noqa: PLC0415
-        TEXT_MATCH_THRESHOLD,
-        containment_from_profiles,
-        flatten_predictions,
-        parse_ground_truth,
-        text_profile,
-        token_containment,
-    )
-    return {
-        "threshold": TEXT_MATCH_THRESHOLD,
-        "containment": containment_from_profiles,
-        "flatten": flatten_predictions,
-        "parse_truth": parse_ground_truth,
-        "text_profile": text_profile,
-        "token_containment": token_containment,
-    }
+    del evaluator_root
+    return evidence_metrics.evaluator_helpers()
 
 
 def load_raw_cases(raw_directories):
@@ -144,72 +124,12 @@ def candidate_confidence(evidence, result):
 
 
 def prediction_text(evidence, prefix):
-    if prefix == "student":
-        return (
-            evidence.get("student_match_text")
-            or evidence.get("student_text")
-            or evidence.get("student")
-            or evidence.get("text")
-            or ""
-        )
-    return (
-        evidence.get("source_match_text")
-        or evidence.get("source_text")
-        or evidence.get("source")
-        or ""
-    )
+    return evidence_metrics.prediction_text(evidence, prefix)
 
 
 def annotate_truth_matches(records, truths, evaluator):
-    truth_profiles = []
-    for truth in truths:
-        truth_profiles.append((
-            evaluator["text_profile"](truth["student_text"]),
-            evaluator["text_profile"](truth["source_text"]),
-        ))
-
-    for record in records:
-        evidence = record["evidence"]
-        student_text = prediction_text(evidence, "student")
-        source_text = prediction_text(evidence, "source")
-        student_profile = evaluator["text_profile"](student_text)
-        source_profile = evaluator["text_profile"](source_text)
-        matches = {}
-        for truth_index, truth in enumerate(truths):
-            if record["source_file"] != truth["source_file"]:
-                continue
-            truth_student_profile, truth_source_profile = truth_profiles[
-                truth_index]
-            student_score = max(
-                evaluator["containment"](
-                    student_profile, truth_student_profile),
-                evaluator["containment"](
-                    truth_student_profile, student_profile),
-            )
-            source_score = max(
-                evaluator["containment"](
-                    source_profile, truth_source_profile),
-                evaluator["containment"](
-                    truth_source_profile, source_profile),
-            )
-            if truth.get("obfuscation") == "high":
-                student_score = max(
-                    student_score,
-                    evaluator["token_containment"](
-                        student_text, truth["student_text"]),
-                )
-                source_score = max(
-                    source_score,
-                    evaluator["token_containment"](
-                        source_text, truth["source_text"]),
-                )
-            if (
-                student_score >= evaluator["threshold"]
-                and source_score >= evaluator["threshold"]
-            ):
-                matches[truth_index] = (
-                    0.7 * student_score + 0.3 * source_score)
-        record["truth_scores"] = matches
+    return evidence_metrics.annotate_truth_matches(
+        records, truths, evaluator)
 
 
 def assign_best_candidate_labels(records):
@@ -396,68 +316,13 @@ def model_score_by_case(model, cases, names, include_cross=False):
 
 
 def precision_metric_fields(evidence_hit_precision):
-    return {
-        "precision": evidence_hit_precision,
-        "evidence_hit_precision": evidence_hit_precision,
-        "character_precision": None,
-        "character_precision_note": CHARACTER_PRECISION_NOTE,
-    }
+    return evidence_metrics.precision_metric_fields(evidence_hit_precision)
 
 
 def evidence_hit_metrics_from_predictions(
         truths, predictions, evaluator, allow_prediction_reuse=True):
-    records = [
-        {
-            "record_id": prediction.get(
-                "prediction_id", f"prediction-{index}"),
-            "source_file": prediction.get("source_file", ""),
-            "evidence": prediction,
-        }
-        for index, prediction in enumerate(predictions)
-    ]
-    annotate_truth_matches(records, truths, evaluator)
-
-    candidate_pairs = sorted(
-        (
-            match_score,
-            truth_index,
-            record["record_id"],
-        )
-        for record in records
-        for truth_index, match_score in record["truth_scores"].items()
-    )
-    assigned_truths = set()
-    hit_records = set()
-    for _score, truth_index, record_id in reversed(candidate_pairs):
-        if truth_index in assigned_truths:
-            continue
-        if not allow_prediction_reuse and record_id in hit_records:
-            continue
-        assigned_truths.add(truth_index)
-        hit_records.add(record_id)
-
-    evidence_count = len(predictions)
-    truth_count = len(truths)
-    evidence_hit_precision = (
-        len(hit_records) / evidence_count
-        if evidence_count else (1.0 if not truth_count else 0.0)
-    )
-    recall = len(assigned_truths) / truth_count if truth_count else 1.0
-    return {
-        "truth_segments": truth_count,
-        "caught_truth_segments": len(assigned_truths),
-        "evidence_count": evidence_count,
-        "evidence_true_positive": len(hit_records),
-        "evidence_false_positive": max(
-            0, evidence_count - len(hit_records)),
-        **precision_metric_fields(evidence_hit_precision),
-        "recall": recall,
-        "f1": (
-            2 * evidence_hit_precision * recall
-            / (evidence_hit_precision + recall)
-            if evidence_hit_precision + recall else 0.0
-        ),
-    }
+    return evidence_metrics.evidence_hit_metrics_from_predictions(
+        truths, predictions, evaluator, allow_prediction_reuse)
 
 
 def fast_metrics(cases, names, scores_by_case, selection):
@@ -470,30 +335,25 @@ def fast_metrics(cases, names, scores_by_case, selection):
         case = cases[name]
         selected = select_ranked_records(
             case["records"], scores_by_case[name], **selection)
-        best_by_truth = {}
-        for record in selected:
-            for truth_index, match_score in record["truth_scores"].items():
-                previous = best_by_truth.get(truth_index)
-                if previous is None or match_score > previous[0]:
-                    best_by_truth[truth_index] = (
-                        match_score, record["record_id"])
-        hit_records = {
-            record_id for _score, record_id in best_by_truth.values()
+        caught_truths = {
+            truth_index
+            for record in selected
+            for truth_index in record["truth_scores"]
         }
         file_truths = len(case["truths"])
-        file_caught = len(best_by_truth)
+        file_caught = len(caught_truths)
         file_evidence = len(selected)
-        file_hits = len(hit_records)
+        file_hits = sum(bool(record["truth_scores"]) for record in selected)
         truth_count += file_truths
         caught_count += file_caught
         evidence_count += file_evidence
         evidence_hits += file_hits
         file_precision = (
             file_hits / file_evidence if file_evidence
-            else (1.0 if not file_truths else 0.0)
+            else None
         )
         file_recall = (
-            file_caught / file_truths if file_truths else 1.0)
+            file_caught / file_truths if file_truths else None)
         per_file.append({
             "file": name,
             "truth_segments": file_truths,
@@ -939,6 +799,7 @@ def main():
 
     payload = {
         "split": split,
+        "scoring": evidence_metrics.scoring_metadata(),
         "dataset": {
             "label_schema_version": LABEL_SCHEMA_VERSION,
             "candidate_count": sum(
